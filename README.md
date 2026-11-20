@@ -1,6 +1,26 @@
-# AutoSlicer-v2 直播歌回自動切片系統 (Windows 客製專用版)
+# AutoSlicer-v2 直播歌回自動切片與統一桌面工作台 (AutoSlicer-v2-UI)
 
-本專案基於 [AutoSlicer-v2](https://github.com/anAtheist987/AutoSlicer-v2) 深度客製，專為 Bilibili 直播錄播設計，集成了**主播專屬聲線辨識模型**、**Windows 一鍵拖曳批次工具鏈**、**LosslessCut 視覺化無損修剪**與**檔案總管 / Mp3tag 中繼資料自動校正**。
+本專案基於 [AutoSlicer-v2](https://github.com/anAtheist987/AutoSlicer-v2) 深度客製，專為 Bilibili 直播錄播設計，集成了**主播專屬聲線辨識模型**、**全新 PySide6 現代桌面工作台**、**Windows 一鍵拖曳批次工具鏈**、**LosslessCut 視覺化無損修剪**與**檔案總管 / Mp3tag 中繼資料自動校正**。
+
+---
+
+## 🌟 統一桌面工作台 (Desktop Workbench)
+
+系統已整合為現代化桌面工作台，告別零散的命令列與批次檔，支援一鍵掃描、排隊執行與即時進度監控：
+
+```bash
+# 啟動桌面工作台
+python app.py
+
+# 或在 Windows 檔案總管直接雙擊 launch_gui.bat / launch_gui.vbs（靜默無黑框）
+```
+
+### 核心功能頁面：
+1. **錄播狀態看板 (Dashboard)**：自動掃描多個錄播監控資料夾，精準識別 5 階段生命週期（待打軸 ➔ 已生 .llc ➔ 有切片待修 ➔ 待匯標註 ➔ 已完成），支援批次生成時間軸、一鍵開啟 LosslessCut 與批次無損直切。
+2. **B 站錄播下載 (Download)**：支援多筆 URL / BV 號 / av 號 / b23.tv 短鏈解析，可自選主播落地目錄、音訊/影片切換、多 P 範圍與 SESSDATA 登入配置。
+3. **快速工具 (Tools)**：支援任意目錄切片隨拖隨切，提供 Mode A（自動逆向溯源原錄播）與 Mode C（手動配對原錄播/XML）之 Metadata 與 Windows `CreationTime` 建立時間同步修復；支援獨立 `.llc` 匯入與 Excel 打軸表導出。
+4. **全域設定 (Settings)**：可視化管理監控資料夾清單、主播與模型權重映射表、LosslessCut 執行檔路徑與預設門檻參數。
+5. **底部任務抽屜 (Queue Drawer)**：嚴格單線 FIFO 調度，確保 RTX 5060 顯存安全與硬碟 I/O 不衝突，支援即時串流日誌、機敏資訊自動遮蔽與進程樹安全終止。
 
 ---
 
