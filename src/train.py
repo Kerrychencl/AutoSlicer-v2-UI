@@ -72,7 +72,10 @@ def evaluate_full(model, pairs, device, out_fps=3.125, chunk_out=2048, overlap_o
             else:
                 mel_chunk = np.asarray(mel[a:b], dtype=np.float32)  # [T', D]
             x = torch.from_numpy(mel_chunk)[None].to(device)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            if device.type == "cuda":
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    logits = model(x)[0].float().cpu().numpy()
+            else:
                 logits = model(x)[0].float().cpu().numpy()
             m = min(len(logits), b - a)
             probs[a: a + m] += logits_to_probs(logits[:m], classes)
@@ -118,6 +121,7 @@ def main():
     ap.add_argument("--manifest", required=True)
     ap.add_argument("--val-manifest", required=True)
     ap.add_argument("--gpu", type=int, default=0)
+    ap.add_argument("--device", default=None, help="'cpu' or 'cuda'")
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--steps", type=int, default=12000)
@@ -140,8 +144,15 @@ def main():
         args.out_fps = 3.125 if args.input_type == "mel" else 1.5625
 
     seed_all(args.seed)
-    device = torch.device(f"cuda:{args.gpu}")
-    run_dir = Path("runs") / args.run_name
+    if args.device:
+        device = torch.device(args.device)
+    elif torch.cuda.is_available():
+        device = torch.device(f"cuda:{args.gpu}")
+    else:
+        device = torch.device("cpu")
+    print(f"Using device: {device}", flush=True)
+    ROOT = Path(__file__).resolve().parents[1]
+    run_dir = ROOT / "runs" / args.run_name
     run_dir.mkdir(parents=True, exist_ok=True)
     writer = SummaryWriter(str(run_dir / "tb"))
     (run_dir / "args.json").write_text(json.dumps(vars(args), indent=2))
@@ -178,32 +189,35 @@ def main():
             if args.input_type == "emb":
                 mel = mel.transpose(1, 2)  # [B, D, T'] -> [B, T', D]
             model.train()
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            if device.type == "cuda":
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    logits = model(mel)
+            else:
                 logits = model(mel)
-                n = min(logits.shape[1], y.shape[1])
-                yy = y[:, :n]
-                if args.classes <= 1:
-                    raw = torch.nn.functional.binary_cross_entropy_with_logits(
-                        logits[:, :n], yy.clamp(0, 1), reduction="none")
-                    mask = (yy >= 0).float()  # -1 = ignore
-                    loss = (raw * mask).sum() / mask.sum().clamp(1)
-                else:
-                    lg = logits[:, :n].float()
-                    yl = yy.long()
-                    ls = torch.log_softmax(lg, -1)
-                    full = (yl >= 0) & (yl < args.classes)
-                    not_a = yl == args.classes  # "not A singing, fine-class unknown"
-                    loss_terms = []
-                    if full.any():
-                        loss_terms.append(torch.nn.functional.nll_loss(
-                            ls[full], yl[full], reduction="sum"))
-                    if not_a.any():
-                        # penalize only P(class 1): -log(1 - p1) = -logsumexp(others) + logsumexp(all)
-                        others = torch.cat([lg[..., :1], lg[..., 2:]], -1)
-                        log_not1 = torch.logsumexp(others, -1) - torch.logsumexp(lg, -1)
-                        loss_terms.append(-(log_not1[not_a]).sum())
-                    denom = (full.sum() + not_a.sum()).clamp(1).float()
-                    loss = sum(loss_terms) / denom
+            n = min(logits.shape[1], y.shape[1])
+            yy = y[:, :n]
+            if args.classes <= 1:
+                raw = torch.nn.functional.binary_cross_entropy_with_logits(
+                    logits[:, :n], yy.clamp(0, 1), reduction="none")
+                mask = (yy >= 0).float()  # -1 = ignore
+                loss = (raw * mask).sum() / mask.sum().clamp(1)
+            else:
+                lg = logits[:, :n].float()
+                yl = yy.long()
+                ls = torch.log_softmax(lg, -1)
+                full = (yl >= 0) & (yl < args.classes)
+                not_a = yl == args.classes  # "not A singing, fine-class unknown"
+                loss_terms = []
+                if full.any():
+                    loss_terms.append(torch.nn.functional.nll_loss(
+                        ls[full], yl[full], reduction="sum"))
+                if not_a.any():
+                    # penalize only P(class 1): -log(1 - p1) = -logsumexp(others) + logsumexp(all)
+                    others = torch.cat([lg[..., :1], lg[..., 2:]], -1)
+                    log_not1 = torch.logsumexp(others, -1) - torch.logsumexp(lg, -1)
+                    loss_terms.append(-(log_not1[not_a]).sum())
+                denom = (full.sum() + not_a.sum()).clamp(1).float()
+                loss = sum(loss_terms) / denom
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
@@ -235,6 +249,12 @@ def main():
                                 "args": vars(args)}, run_dir / "best.pt")
                     print(f"  new best score={score:.4f}", flush=True)
     print(f"DONE best_score={best_score:.4f}", flush=True)
+    try:
+        writer.close()
+    except Exception:
+        pass
+    import os
+    os._exit(0)
 
 
 if __name__ == "__main__":

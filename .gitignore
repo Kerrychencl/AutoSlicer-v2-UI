@@ -18,3 +18,6 @@ logs_*.txt
 .claude/
 build/
 *.egg-info/
+.autoslicer_gui_cache.json
+*.tmp
+*.tmp_meta*

@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoSlicer-v2 歌切品管與客觀打分 — 工程升級版決策儀表板 (v2.0)</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* 預設深色主題色票：確保脫離宿主環境、本機雙擊開啟時仍具完整高對比視覺；於宿主內則自動由行內主題變數覆寫 */
+    :root {
+      --background: #0d1117;
+      --content: #111827;
+      --card: #161b22;
+      --sidebar: #161b22;
+      --border: #30363d;
+      --card-border: #262c36;
+      --foreground: #e6edf3;
+      --muted-foreground: #8b949e;
+      --placeholder: #6e7681;
+      --code-foreground: #79c0ff;
+      --primary: #3b82f6;
+      --primary-foreground: #ffffff;
+      --secondary: #21262d;
+      --secondary-foreground: #c9d1d9;
+      --accent: #1f6feb;
+      --link: #58a6ff;
+      --success: #3fb950;
+      --warning: #d29922;
+      --error: #f85149;
+      --chart-1: #58a6ff;
+      --chart-2: #3fb950;
+      --chart-3: #d29922;
+      --chart-4: #bc8cff;
+      --chart-5: #f85149;
+      --chart-6: #39c5cf;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", "PingFang TC", sans-serif;
+    }
+
+    .tab-btn[aria-selected="true"] {
+      background-color: var(--primary);
+      color: var(--primary-foreground);
+      border-color: var(--primary);
+    }
+    .filter-btn[aria-pressed="true"] {
+      background-color: var(--secondary);
+      color: var(--secondary-foreground);
+      border-color: var(--primary);
+    }
+    .bar-fill {
+      transition: width 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 9999px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased m-0 p-0">
+  <div class="max-w-6xl mx-auto px-5 py-6 space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-4 border-b border-[var(--border)]">
+      <div class="space-y-1.5">
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          <span class="px-2 py-0.5 rounded bg-[var(--primary)] text-[var(--primary-foreground)] font-medium">AutoSlicer-v2 工程規格 v2.0</span>
+          <span class="px-2 py-0.5 rounded border border-[var(--border)] text-[var(--muted-foreground)] font-mono">RTX 5060 8GB (峰值 &lt; 6GB 循序釋放)</span>
+          <span class="px-2 py-0.5 rounded border border-[var(--border)] text-[var(--muted-foreground)]">Mel-Band-RoFormer ・ 穩態音符 ・ 零粉絲濾鏡</span>
+        </div>
+        <h1 class="text-xl font-semibold tracking-tight text-[var(--foreground)]">歌切品管與客觀唱功評分：升級工程規格與路線圖</h1>
+        <p class="text-sm text-[var(--muted-foreground)]">針對直播機架混響、原唱墊音、抒情彈性速度、多語種幻覺與 Windows 檔名防呆全面修正後的落地藍圖。</p>
+      </div>
+
+      <!-- Primary Tabs -->
+      <nav class="flex items-center gap-1.5 shrink-0" role="tablist">
+        <button class="tab-btn px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] transition cursor-pointer" data-tab="matrix" aria-selected="true">1. 全景方案對照</button>
+        <button class="tab-btn px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] transition cursor-pointer" data-tab="builder" aria-selected="false">2. 互動管線模擬器</button>
+        <button class="tab-btn px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] transition cursor-pointer" data-tab="roadmap" aria-selected="false">3. 下一步行動路線</button>
+      </nav>
+    </header>
+
+    <!-- Top Core Constraints Strip -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="p-3.5 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-1">
+        <div class="text-xs font-medium text-[var(--muted-foreground)]">硬性約束 #1・顯存安全</div>
+        <div class="text-sm font-semibold text-[var(--foreground)]">循序載入・峰值 &lt; 6GB</div>
+        <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">每階段結束強制執行 <code class="text-[var(--code-foreground)]">del model; empty_cache()</code>，絕不同時駐留兩個深度模型。</p>
+      </div>
+      <div class="p-3.5 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-1">
+        <div class="text-xs font-medium text-[var(--muted-foreground)]">硬性約束 #2・架構解耦</div>
+        <div class="text-sm font-semibold text-[var(--foreground)]">獨立 <code class="text-[var(--code-foreground)]">score_clips.bat</code></div>
+        <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">嚴禁修改或拖慢現有 <code class="text-[var(--code-foreground)]">generate_llc.bat</code> 18 秒生軸；僅對已切歌段進行體檢。</p>
+      </div>
+      <div class="p-3.5 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-1">
+        <div class="text-xs font-medium text-[var(--muted-foreground)]">硬性約束 #3・排雷貼標</div>
+        <div class="text-sm font-semibold text-[var(--foreground)]">Windows 安全標籤前綴</div>
+        <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">絕不自動刪除，標籤禁用 <code class="text-[var(--code-foreground)]">/ : |</code>，時間改 <code class="text-[var(--code-foreground)]">01m42s</code>，由 <code class="text-[var(--code-foreground)]">sync_metadata</code> 正則剝離。</p>
+      </div>
+      <div class="p-3.5 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-1">
+        <div class="text-xs font-medium text-[var(--muted-foreground)]">硬性約束 #4・零濾鏡</div>
+        <div class="text-sm font-semibold text-[var(--foreground)]">純伴奏基準・不靠彈幕</div>
+        <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">不依賴 XML、MIDI 或歌詞爬蟲，直接以 RoFormer 分離出的伴奏作客觀調性與拍點基準。</p>
+      </div>
+    </section>
+
+    <!-- ==================== TAB 1: MATRIX ==================== -->
+    <main id="panel-matrix" class="space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="filter-btn px-3 py-1 text-xs rounded-full border border-[var(--border)] bg-[var(--card)] cursor-pointer" data-filter="all" aria-pressed="true">全部方案 (9)</button>
+          <button class="filter-btn px-3 py-1 text-xs rounded-full border border-[var(--border)] bg-[var(--card)] cursor-pointer" data-filter="core" aria-pressed="false">核心主力 (3)</button>
+          <button class="filter-btn px-3 py-1 text-xs rounded-full border border-[var(--border)] bg-[var(--card)] cursor-pointer" data-filter="optional" aria-pressed="false">進階選配 (2)</button>
+          <button class="filter-btn px-3 py-1 text-xs rounded-full border border-[var(--border)] bg-[var(--card)] cursor-pointer" data-filter="avoid" aria-pressed="false">已排除 / 避坑 (4)</button>
+        </div>
+        <span class="text-xs text-[var(--muted-foreground)]">點擊任一卡片檢視修正後的演算法細節與避坑原因</span>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        <div id="scheme-list" class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+        <aside id="scheme-detail" class="lg:col-span-5 p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-4 lg:sticky lg:top-4"></aside>
+      </div>
+    </main>
+
+    <!-- ==================== TAB 2: BUILDER ==================== -->
+    <main id="panel-builder" class="hidden space-y-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-lg bg-[var(--card)] border border-[var(--border)]">
+        <div class="space-y-0.5">
+          <div class="text-xs font-semibold text-[var(--foreground)]">快速套用推薦組合（已啟用模組共用分離軌依賴連動）</div>
+          <div class="text-xs text-[var(--muted-foreground)]">模組 C（Whisper 兩階段插話）與模組 D（MuQ）皆依賴模組 B 的 Mel-Band-RoFormer 分離音軌，勾選時自動連動。</div>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button class="preset-btn px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)] cursor-pointer" data-preset="lite">極速輕量版（0 依賴）</button>
+          <button class="preset-btn px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)] cursor-pointer" data-preset="physics">v2.0 客觀體檢主力（最推薦）</button>
+          <button class="preset-btn px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)] cursor-pointer" data-preset="full">RTX 5060 全能體檢版</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+        <div class="lg:col-span-5 space-y-3">
+          <h2 class="text-sm font-semibold text-[var(--foreground)]">勾選欲啟用的品管模組</h2>
+          <div id="module-toggles" class="space-y-2.5"></div>
+        </div>
+
+        <div class="lg:col-span-7 space-y-4">
+          <div class="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-sm font-semibold">硬體負擔與能力雷達（一場 4 小時 / 20 首歌循序執行）</h3>
+              <span id="vram-badge" class="text-xs font-mono px-2 py-0.5 rounded border border-[var(--border)]"></span>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3 text-center">
+              <div class="p-2.5 rounded-md bg-[var(--background)] border border-[var(--card-border)]">
+                <div class="text-xs text-[var(--muted-foreground)]">單場額外耗時</div>
+                <div id="stat-time" class="text-base font-semibold font-mono mt-0.5">--</div>
+              </div>
+              <div class="p-2.5 rounded-md bg-[var(--background)] border border-[var(--card-border)]">
+                <div class="text-xs text-[var(--muted-foreground)]">VRAM 峰值 / 6GB 上限</div>
+                <div id="stat-vram" class="text-base font-semibold font-mono mt-0.5">--</div>
+              </div>
+              <div class="p-2.5 rounded-md bg-[var(--background)] border border-[var(--card-border)]">
+                <div class="text-xs text-[var(--muted-foreground)]">需下載模型空間</div>
+                <div id="stat-disk" class="text-base font-semibold font-mono mt-0.5">--</div>
+              </div>
+            </div>
+
+            <div id="capability-bars" class="space-y-2.5 pt-1"></div>
+          </div>
+
+          <div class="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h3 class="text-sm font-semibold">模擬成果預覽：Windows 安全 `.llc` 標籤（禁用 / : |）</h3>
+              <span class="text-xs text-[var(--muted-foreground)]">依上方勾選即時變化</span>
+            </div>
+            <div id="llc-preview" class="space-y-2"></div>
+            <div class="p-2.5 rounded-md bg-[var(--background)] border border-[var(--card-border)] text-xs text-[var(--muted-foreground)] space-y-1">
+              <div><strong class="text-[var(--foreground)]">下游防呆相容：</strong><code class="text-[var(--code-foreground)]">sync_metadata.bat</code> 匯出檔名時，將統一以正則 <code class="text-[var(--code-foreground)]">^[✅🟡🔴🎵]\s*\[.*?\]\s*</code> 剝離評分前綴，避免污染最終成片檔名。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==================== TAB 3: ROADMAP ==================== -->
+    <main id="panel-roadmap" class="hidden space-y-5">
+      <div class="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="space-y-1">
+          <div class="text-sm font-semibold text-[var(--foreground)]">嚴格控制變因：Step 0 盲測務必「限定同一曲風」對比！</div>
+          <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">例如 5 首滿意抒情歌 vs 5 首不想留抒情歌（或同為動漫燃曲）。若把滿意鋼琴抒情跟翻車重金屬混測，鼓點與和聲密度差異會干擾指標校準。確認 Cohen's d 分離度過關後再整合進正式工具鏈。</p>
+        </div>
+        <span class="shrink-0 px-3 py-1.5 rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-medium">已生成 step0_blind_test.py</span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Step 0 -->
+        <div class="p-4 rounded-lg bg-[var(--card)] border-2 border-[var(--primary)] space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-[var(--primary)] text-[var(--primary-foreground)]">STEP 0・現已就緒</span>
+            <span class="text-xs text-[var(--muted-foreground)]">scripts/step0_blind_test.py</span>
+          </div>
+          <h3 class="text-base font-semibold">同曲風 5 好歌 vs 5 不想留盲測驗證</h3>
+          <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">將同一主播、同一曲風的切片分別放進 <code class="text-[var(--code-foreground)]">good_clips/</code> 與 <code class="text-[var(--code-foreground)]">bad_clips/</code>，循序執行全套修正版物理演算法：</p>
+          <ul class="text-xs space-y-1.5 text-[var(--foreground)] list-disc pl-4">
+            <li><strong>Mel-Band-RoFormer</strong> 保留混響尾音分離（分離完立刻釋放顯存）</li>
+            <li><strong>RMVPE 穩態音符過濾</strong>（濾除滑音與顫音尾，取核心中位數 Cents 偏差）</li>
+            <li><strong>12~15 dB RMS 能量門檻</strong>（排除原唱導唱墊音干擾）</li>
+            <li><strong>2 秒滑動視窗 Chroma</strong> + <strong>IOI 律動 CV / 鼓點門檻</strong> + <strong>高音破音/斷氣檢測</strong></li>
+          </ul>
+          <div class="p-2.5 rounded bg-[var(--background)] border border-[var(--card-border)] text-xs">
+            <span class="font-semibold text-[var(--foreground)]">驗收輸出：</span>
+            <span class="text-[var(--muted-foreground)]">終端對照表（含 Cohen's d 分離度）＋ <code class="text-[var(--code-foreground)]">blind_test_report.csv</code>。</span>
+          </div>
+        </div>
+
+        <!-- Step 1 -->
+        <div class="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-[var(--secondary)] text-[var(--secondary-foreground)]">STEP 1・零依賴輕量版</span>
+            <span class="text-xs text-[var(--muted-foreground)]">0 新套件 / 獨立檢視</span>
+          </div>
+          <h3 class="text-base font-semibold">基於 <code class="text-[var(--code-foreground)]">probs.npy</code> 的結構異常預警</h3>
+          <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">不改動生軸主線速度，直接讀取既有機率檔，快速揪出最明顯的結構性殘缺：</p>
+          <ul class="text-xs space-y-1.5 text-[var(--foreground)] list-disc pl-4">
+            <li>自動標記 <strong>過短試唱放棄</strong>（例如 50~110 秒）</li>
+            <li>自動標記 <strong>歌唱覆蓋率過低</strong>（排除前後奏仍大段空白）</li>
+            <li>自動標記 <strong>段內多次低谷</strong>（後續可由 RoFormer 人聲軌二次確認是否為純間奏）</li>
+          </ul>
+          <div class="p-2.5 rounded bg-[var(--background)] border border-[var(--card-border)] text-xs">
+            <span class="font-semibold text-[var(--foreground)]">設計原則：</span>
+            <span class="text-[var(--muted-foreground)]">只做黃牌預警提示，不自動刪減片段。</span>
+          </div>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-[var(--secondary)] text-[var(--secondary-foreground)]">STEP 2・主力工具落地</span>
+            <span class="text-xs text-[var(--muted-foreground)]">獨立 score_clips.bat</span>
+          </div>
+          <h3 class="text-base font-semibold">獨立體檢站：物理打分 ＋ 兩階段防幻覺插話偵測</h3>
+          <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">Step 0 門檻校準完成後，封裝成獨立批次工具，拖入 <code class="text-[var(--code-foreground)]">.llc</code> 與影片即可批次評分：</p>
+          <ul class="text-xs space-y-1.5 text-[var(--foreground)] list-disc pl-4">
+            <li>循序執行：<strong>RoFormer 分離</strong> → 釋放 → <strong>RMVPE＋物理打分</strong> → 釋放 → <strong>兩階段 Whisper 插話檢測</strong></li>
+            <li>兩階段防幻覺：先以高滑動 F0＋高音節率框出疑似說話段，再交給 <code class="text-[var(--code-foreground)]">large-v3-turbo</code> 嚴格閾值轉寫</li>
+            <li>回寫 <strong>Windows 安全標籤</strong> 到 <code class="text-[var(--code-foreground)]">.llc</code>，並同步升級 <code class="text-[var(--code-foreground)]">sync_clip_metadata.py</code> 正則前綴剝離</li>
+          </ul>
+          <div class="p-2.5 rounded bg-[var(--background)] border border-[var(--card-border)] text-xs">
+            <span class="font-semibold text-[var(--foreground)]">資源控制：</span>
+            <span class="text-[var(--muted-foreground)]">RTX 5060 峰值顯存鎖定 &lt; 6GB，20 首歌約 5~6 分鐘完事。</span>
+          </div>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-[var(--secondary)] text-[var(--secondary-foreground)]">STEP 3・長線審美進階</span>
+            <span class="text-xs text-[var(--muted-foreground)]">選配模組</span>
+          </div>
+          <h3 class="text-base font-semibold">VocalVerse 2 (MuQ) 或個人品管分類頭</h3>
+          <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">當客觀「排雷」已經幫您濾掉 80% 翻車曲後，若想進一步從「及格歌」裡自動挑出「您最愛的特等神回」：</p>
+          <ul class="text-xs space-y-1.5 text-[var(--foreground)] list-disc pl-4">
+            <li>複用 RoFormer 分離出的 <code class="text-[var(--code-foreground)]">vocals.wav</code> 接入 <strong>VocalVerse 2 (MuQ)</strong></li>
+            <li>累積 50~100 首該主播您實際「留用 vs 捨棄」的歷史清單，用 MuQ 特徵微調 3 分鐘個人偏好分類頭</li>
+          </ul>
+          <div class="p-2.5 rounded bg-[var(--background)] border border-[var(--card-border)] text-xs">
+            <span class="font-semibold text-[var(--foreground)]">務實順序：</span>
+            <span class="text-[var(--muted-foreground)]">先把「不熟／跑調／插話」踢乾淨，再談主觀神回挑選。</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Decoupled Pipeline Diagram -->
+      <div class="p-4 rounded-lg bg-[var(--card)] border border-[var(--border)] space-y-3">
+        <h3 class="text-sm font-semibold">解耦後的日常工作流（保留 18 秒生軸體驗，品管獨立選跑）</h3>
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-2 items-stretch text-xs">
+          <div class="p-3 rounded-md bg-[var(--background)] border border-[var(--card-border)] flex flex-col justify-between">
+            <div class="font-mono text-[var(--muted-foreground)]">1. 極速生軸（不更動）</div>
+            <div class="font-semibold my-1">generate_llc.bat</div>
+            <div class="text-[var(--muted-foreground)]">維持 18 秒極速掃描 4 小時錄播，輸出原始 .llc 與 probs.npy</div>
+          </div>
+          <div class="p-3 rounded-md bg-[var(--background)] border border-[var(--primary)] flex flex-col justify-between">
+            <div class="font-mono text-[var(--primary)]">2. 獨立品管（新增・選跑）</div>
+            <div class="font-semibold my-1">score_clips.bat</div>
+            <div class="text-[var(--muted-foreground)]">循序跑 RoFormer → 物理打分 → 兩階段插話，寫入安全 .llc 標籤</div>
+          </div>
+          <div class="p-3 rounded-md bg-[var(--background)] border border-[var(--card-border)] flex flex-col justify-between">
+            <div class="font-mono text-[var(--muted-foreground)]">3. 快速審片（現有）</div>
+            <div class="font-semibold my-1">LosslessCut</div>
+            <div class="text-[var(--muted-foreground)]">綠燈放心留，紅/黃燈直跳 @01m42s 聽 3 秒決定刪留，無損導出</div>
+          </div>
+          <div class="p-3 rounded-md bg-[var(--background)] border border-[var(--card-border)] flex flex-col justify-between">
+            <div class="font-mono text-[var(--muted-foreground)]">4. 元數據與檔名清理</div>
+            <div class="font-semibold my-1">sync_metadata.bat</div>
+            <div class="text-[var(--muted-foreground)]">以正則剝離評分前綴，寫回原錄播日期、主播標籤與純淨曲名</div>
+          </div>
+          <div class="p-3 rounded-md bg-[var(--background)] border border-[var(--card-border)] flex flex-col justify-between">
+            <div class="font-mono text-[var(--muted-foreground)]">5. 黃金軸回流（現有）</div>
+            <div class="font-semibold my-1">import_llc.bat</div>
+            <div class="text-[var(--muted-foreground)]">匯入人工確認的黃金軸，持續迭代主播模型或個人偏好庫</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ==================== DATA (v2.0 Upgraded Specs) ====================
+    const SCHEMES = [
+      {
+        id: 'probs',
+        name: 'probs.npy 結構體檢',
+        category: 'core',
+        badge: '核心主力・零成本',
+        target: '試唱放棄、大段沒唱、頻繁斷唱初篩',
+        stack: '純 NumPy（讀取現有 out/*.probs.npy）',
+        vram: '0 GB（純 CPU）',
+        speed: '0.1 秒 / 場',
+        filterFree: '100% 客觀（純模型機率曲線）',
+        pros: [
+          '零依賴、零顯存負擔，可先濾出明顯唱不到 100 秒就放棄的殘缺片段。',
+          '搭配 RoFormer 分離後的人聲軌能量，可精準區分「純樂器間奏」與「中途停唱聊天」。'
+        ],
+        cons: [
+          '單獨使用時會對長間奏發出黃牌提醒，因此只作輔助預警、不自動刪除。',
+          '無法偵測沒停頓的跑調、拖拍或自爆吐槽。'
+        ],
+        verdict: '必備低成本基礎層，與物理打分引擎組合後可消除純間奏誤判。'
+      },
+      {
+        id: 'physics',
+        name: '純物理客觀打分（RoFormer + RMVPE 穩態版）',
+        category: 'core',
+        badge: '核心主力・v2.0 升級',
+        target: '音準穩態偏差、滑動調性衝突、IOI 律動、高音八度破音／斷氣',
+        stack: 'Mel-Band-RoFormer + RMVPE + 穩態音符切分 + 2s Chroma + HPSS',
+        vram: '峰值 ~4.2 GB（循序載入・用完即清 < 6GB）',
+        speed: '約 3.5~4.5 分鐘 / 場（20 首歌）',
+        filterFree: '100% 純物理聲學，完全免疫粉絲濾鏡',
+        pros: [
+          '以 Mel-Band-RoFormer 取代 Demucs，完整保留直播機架混響尾音，不因混響被切斷誤判破音。',
+          '穩態音符過濾＋12~15 dB RMS 能量門檻：只取音符核心穩態中位數算 Cents，不誤殺滑音/顫音，且避開原唱導唱墊音。',
+          '2 秒滑動視窗 Chroma 適應轉調與借用和弦；IOI 內部律動＋鼓點門檻保護抒情歌 Rubato；改抓高音八度跳變與長音驟降取代醫學 Jitter，不誤殺氣聲/哭腔。'
+        ],
+        cons: [
+          '抓不到「沒出調也沒飄音，單純記錯旋律線把 Do 穩穩唱成 Mi」的狀況。',
+          'Step 0 門檻校準時需「控制同一曲風」對照（如抒情對抒情、燃曲對燃曲）。'
+        ],
+        verdict: '本次升級最核心的純聲學打分引擎，也是後續 Whisper 與 MuQ 共享 vocals.wav 的地基。'
+      },
+      {
+        id: 'whisper',
+        name: '兩階段防幻覺插話檢測（聲學預篩 + Whisper）',
+        category: 'core',
+        badge: '核心主力・防幻覺版',
+        target: '中途插話聊天、忘詞／重來／唱錯等破功自爆詞',
+        stack: '共享 RoFormer vocals.wav + F0滑動/音節率預篩 + faster-whisper large-v3-turbo',
+        vram: '峰值 ~3.2 GB（循序載入，不與 RoFormer 併存）',
+        speed: '約 1.0~1.5 分鐘 / 場（僅轉寫預篩出的可疑說話段）',
+        filterFree: '100% 聽主播本人純人聲，不看彈幕',
+        pros: [
+          '第一階段先用純聲學（連續大幅滑動 F0 軌跡＋高音節率）框出疑似說話時間窗，再交給 Whisper，速度更快且大幅降低誤報。',
+          '強制設定嚴格的 no_speech_threshold 與 logprob_threshold，有效防止日文/英文高音轉音被幻覺成中文吐槽詞。',
+          '精準回報 Windows 安全時間碼（如 @01m42s），在 LosslessCut 3 秒定奪。'
+        ],
+        cons: [
+          '依賴模組 B 的 Mel-Band-RoFormer 純人聲軌，以確保伴奏不會干擾音節率與語音辨識。'
+        ],
+        verdict: '與物理打分完美互補：物理引擎抓「唱歪／破音」，兩階段 Whisper 抓「講話／自爆唱錯」。'
+      },
+      {
+        id: 'vocalverse',
+        name: 'VocalVerse 2 (MuQ 聲樂總評)',
+        category: 'optional',
+        badge: '進階選配・唯一對口 AI',
+        target: '音色質感、氣息控制與真人翻唱技巧總評',
+        stack: 'CarlWangChina/QwenFeat-Vocal-Score (MuQ 分支，共用 vocals.wav)',
+        vram: '峰值 ~4.5 GB（循序載入可跑；v1 Qwen-Audio 過重不採用）',
+        speed: '約 1.2 分鐘 / 場',
+        filterFree: '100% 真人 KTV 翻唱與聲樂老師標註',
+        pros: [
+          '現有開源評分模型中唯一真正針對「真人翻唱」訓練的模型。',
+          '共用 RoFormer 分離好的純人聲軌，不需重複做分離。'
+        ],
+        cons: [
+          '依賴較重，建議等 Step 0~2 客觀排雷成熟後再作為 Step 3 選配。'
+        ],
+        verdict: '放在 Step 3 補充主觀聽感與音色總分。'
+      },
+      {
+        id: 'personal_clf',
+        name: '個人口味分類頭（MuQ Embedding 微調）',
+        category: 'optional',
+        badge: '進階選配・長線終極',
+        target: '學習「您個人」留用 vs 捨棄歌切的真實標準',
+        stack: 'MuQ Embedding + 輕量線性回歸 / MLP',
+        vram: '< 2.0 GB（微調僅需數分鐘）',
+        speed: '毫秒級推論',
+        filterFree: '100% 對齊您個人審美，零他人干擾',
+        pros: [
+          '累積 50~100 首實際留用／刪除清單即可訓練，長線最懂您想留哪種神回。'
+        ],
+        cons: [
+          '需要前期累積足夠的個人標註紀錄（冷啟動門檻）。'
+        ],
+        verdict: 'Step 3 長線進階選項。'
+      },
+      {
+        id: 'xml',
+        name: 'B 站 XML 彈幕情緒評分',
+        category: 'avoid',
+        badge: '已排除・粉絲濾鏡失真',
+        target: '直播間氣氛與觀眾互動熱度',
+        stack: 'Python XML Parser',
+        vram: '0 GB',
+        speed: '0.1 秒 / 場',
+        filterFree: '❌ 嚴重受粉絲濾鏡干擾',
+        pros: ['零算力成本，可看互動熱度。'],
+        cons: [
+          '就算主播唱跑調或不熟，忠實粉絲依然會熱情打 call 刷「好聽」，無法作為客觀唱功依據。'
+        ],
+        verdict: '永久排除於客觀唱功打分之外。'
+      },
+      {
+        id: 'singmos',
+        name: 'SingMOS / SingMOS-Pro',
+        category: 'avoid',
+        badge: '避坑排除・領域錯位',
+        target: '原設計：抓 AI 合成歌聲（SVS/SVC）的機械偽影',
+        stack: 'South-Twilight/SingMOS',
+        vram: '< 2 GB',
+        speed: '極快',
+        filterFree: '❌ 會誤殺伴奏炸裂的搖滾／燃曲',
+        pros: ['輕量，適合測錄音底噪。'],
+        cons: [
+          '對分離殘留偽影極度敏感、對人類走音遲鈍，容易把燃曲打低分、平淡鋼琴曲打高分。'
+        ],
+        verdict: '排除，避免評成「分離乾爽度」而非唱功。'
+      },
+      {
+        id: 'songeval',
+        name: 'SongEval',
+        category: 'avoid',
+        badge: '避坑排除・評錯對象',
+        target: '原設計：評測 Suno/Udio 等 AI 作曲整首歌結構',
+        stack: 'ASLP-lab/SongEval',
+        vram: '~4 GB',
+        speed: '中等',
+        filterFree: '❌ 實際是在誇獎原曲商業編曲',
+        pros: ['免分離整曲輸入。'],
+        cons: ['直播用的是成品伴奏，難以分辨同一主播今天唱得穩不穩。'],
+        verdict: '排除。'
+      },
+      {
+        id: 'retrain5',
+        name: '重訓 5 類 AutoSlicer / 對比原唱 DTW',
+        category: 'avoid',
+        badge: '避坑排除・CP 值過低',
+        target: '改寫 1-class CRNN 模型 / 爬原唱做 KTV 對齊',
+        stack: '重標數據重訓 / 識曲 + 原唱分離 + DTW',
+        vram: '高工程與維護成本',
+        speed: '極脆易崩',
+        filterFree: '遇換 Key、清唱、改編即失效',
+        pros: ['理論上可抓純記錯旋律線。'],
+        cons: [
+          '現有 4 位主播皆為 1-class CRNN，重訓成本極高；對比原唱需依賴識曲與版權音檔且不耐換 Key。'
+        ],
+        verdict: '排除，堅守解耦與免參考設計。'
+      }
+    ];
+
+    const MODULES = [
+      {
+        id: 'm_probs',
+        name: 'A. probs.npy 結構體檢',
+        tag: '0 依賴・基礎層',
+        desc: '讀取現有機率曲線，抓出過短試唱放棄、全曲低覆蓋率與段內深谷。',
+        timeMin: 0.05,
+        vramGb: 0.0,
+        diskGb: 0.0,
+        requires: [],
+        caps: { quit: 95, talk: 35, oops: 10, pitch: 0, rhythm: 0, vocal: 0 }
+      },
+      {
+        id: 'm_physics',
+        name: 'B. Mel-Band-RoFormer + 穩態物理打分',
+        tag: '核心地基・共用分離軌',
+        desc: 'RoFormer 保留混響分離 + RMVPE 穩態音符 Cents + 12~15dB 防墊音門檻 + 2s Chroma + IOI/鼓點門檻 + 高音破音/斷氣。',
+        timeMin: 4.0,
+        vramGb: 4.2,
+        diskGb: 1.5,
+        requires: [],
+        caps: { quit: 45, talk: 82, oops: 20, pitch: 93, rhythm: 86, vocal: 50 }
+      },
+      {
+        id: 'm_whisper',
+        name: 'C. 兩階段防幻覺插話掃描（依賴 B）',
+        tag: '共用 vocals.wav',
+        desc: '先以連續滑動 F0＋高音節率框出疑似說話窗，再以 faster-whisper large-v3-turbo（嚴格閾值）防多語種幻覺抓自爆詞。',
+        timeMin: 1.2,
+        vramGb: 3.2,
+        diskGb: 1.8,
+        requires: ['m_physics'],
+        caps: { quit: 30, talk: 96, oops: 94, pitch: 0, rhythm: 0, vocal: 0 }
+      },
+      {
+        id: 'm_muq',
+        name: 'D. VocalVerse 2 (MuQ) 聲樂總評（依賴 B）',
+        tag: '選配・共用 vocals.wav',
+        desc: '基於真人 KTV 翻唱訓練，補充音色質感與聲樂技巧總分（循序載入，不與 B/C 併存顯存）。',
+        timeMin: 1.2,
+        vramGb: 4.5,
+        diskGb: 2.5,
+        requires: ['m_physics'],
+        caps: { quit: 0, talk: 10, oops: 10, pitch: 40, rhythm: 30, vocal: 86 }
+      }
+    ];
+
+    const SAMPLE_SONGS = [
+      {
+        base: 'Song_01（穩定抒情歌・含尾音顫音與彈性速度）',
+        dur: '04:12',
+        probsIssue: null,
+        physics: { pitch: 92, rhythm: 89, stab: 91, talkAt: null },
+        whisper: null,
+        muq: 4.3
+      },
+      {
+        base: 'Song_02（對歌不熟・穩態長音偏音且律動發散）',
+        dur: '03:45',
+        probsIssue: null,
+        physics: { pitch: 63, rhythm: 66, stab: 71, talkAt: null },
+        whisper: null,
+        muq: 2.8
+      },
+      {
+        base: 'Song_03（30秒吉他Solo＋日文高音轉音・其實唱超好）',
+        dur: '04:28',
+        probsIssue: '疑段內低谷',
+        physics: { pitch: 94, rhythm: 93, stab: 92, talkAt: null, confirmedInstrumental: true },
+        whisper: null, // 嚴格閾值保護，日文高音轉音零幻覺！
+        muq: 4.5
+      },
+      {
+        base: 'Song_04（唱到一半停下吐槽「詞呢重來」）',
+        dur: '03:55',
+        probsIssue: '疑中斷',
+        physics: { pitch: 82, rhythm: 78, stab: 80, talkAt: '01m42s' },
+        whisper: '疑忘詞插話@01m42s',
+        muq: 3.5
+      },
+      {
+        base: 'Song_05（唱78秒高音八度破音直接喊停）',
+        dur: '01:18',
+        probsIssue: '過短78s',
+        physics: { pitch: 70, rhythm: 75, stab: 58, talkAt: '01m08s', pitchBreak: true },
+        whisper: '疑吐槽@01m08s',
+        muq: 2.6
+      }
+    ];
+
+    const CAP_LABELS = [
+      { key: 'quit', label: '抓唱一半放棄 / 過短試唱' },
+      { key: 'talk', label: '抓中途講話（不誤殺純間奏與機架混響）' },
+      { key: 'oops', label: '抓唱錯自爆吐槽（防日/英歌詞幻覺）' },
+      { key: 'pitch', label: '客觀音準分（穩態音符＋防墊音＋2s調性）' },
+      { key: 'rhythm', label: '客觀節奏分（IOI律動＋鼓點門檻護抒情）' },
+      { key: 'vocal', label: '綜合聲樂聽感（高音破音/斷氣＋MuQ總評）' }
+    ];
+
+    // ==================== STATE ====================
+    let activeFilter = 'all';
+    let selectedSchemeId = 'physics';
+    let enabledModules = new Set(['m_probs', 'm_physics', 'm_whisper']);
+
+    // ==================== TABS ====================
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.tab;
+        document.querySelectorAll('.tab-btn').forEach(b => b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
+        ['matrix', 'builder', 'roadmap'].forEach(id => {
+          document.getElementById('panel-' + id).classList.toggle('hidden', id !== target);
+        });
+      });
+    });
+
+    // ==================== TAB 1 RENDER ====================
+    function badgeStyle(cat) {
+      if (cat === 'core') return 'border-[var(--success)] text-[var(--success)]';
+      if (cat === 'optional') return 'border-[var(--warning)] text-[var(--warning)]';
+      return 'border-[var(--error)] text-[var(--error)]';
+    }
+
+    function dotColor(cat) {
+      if (cat === 'core') return 'var(--success)';
+      if (cat === 'optional') return 'var(--warning)';
+      return 'var(--error)';
+    }
+
+    function renderMatrix() {
+      const list = document.getElementById('scheme-list');
+      const filtered = activeFilter === 'all' ? SCHEMES : SCHEMES.filter(s => s.category === activeFilter);
+      if (!filtered.some(s => s.id === selectedSchemeId) && filtered.length) {
+        selectedSchemeId = filtered[0].id;
+      }
+
+      list.innerHTML = filtered.map(s => {
+        const active = s.id === selectedSchemeId;
+        return `
+          <button type="button" data-scheme="${s.id}"
+            class="text-left p-3.5 rounded-lg bg-[var(--card)] border transition cursor-pointer space-y-2 ${active ? 'border-[var(--primary)] ring-1 ring-[var(--primary)]' : 'border-[var(--border)] hover:border-[var(--muted-foreground)]'}">
+            <div class="flex items-center justify-between gap-2">
+              <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border ${badgeStyle(s.category)}">
+                <span class="status-dot" style="background:${dotColor(s.category)}"></span>
+                ${s.badge}
+              </span>
+            </div>
+            <div class="text-sm font-semibold text-[var(--foreground)]">${s.name}</div>
+            <div class="text-xs text-[var(--muted-foreground)]">${s.target}</div>
+            <div class="flex items-center justify-between pt-1.5 border-t border-[var(--card-border)] text-xs font-mono text-[var(--muted-foreground)]">
+              <span>${s.speed}</span>
+              <span>${s.vram.split('（')[0]}</span>
+            </div>
+          </button>
+        `;
+      }).join('');
+
+      list.querySelectorAll('[data-scheme]').forEach(el => {
+        el.addEventListener('click', () => {
+          selectedSchemeId = el.dataset.scheme;
+          renderMatrix();
+        });
+      });
+
+      const cur = SCHEMES.find(s => s.id === selectedSchemeId);
+      const detail = document.getElementById('scheme-detail');
+      if (!cur) return;
+
+      detail.innerHTML = `
+        <div class="space-y-1.5 pb-3 border-b border-[var(--card-border)]">
+          <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full border ${badgeStyle(cur.category)}">
+            <span class="status-dot" style="background:${dotColor(cur.category)}"></span>
+            ${cur.badge}
+          </span>
+          <h3 class="text-base font-semibold text-[var(--foreground)] pt-1">${cur.name}</h3>
+          <p class="text-xs text-[var(--muted-foreground)]">${cur.target}</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-2 text-xs">
+          <div class="flex justify-between gap-3 py-1 border-b border-[var(--card-border)]">
+            <span class="text-[var(--muted-foreground)] shrink-0">核心技術</span>
+            <span class="font-mono text-right text-[var(--foreground)]">${cur.stack}</span>
+          </div>
+          <div class="flex justify-between gap-3 py-1 border-b border-[var(--card-border)]">
+            <span class="text-[var(--muted-foreground)] shrink-0">RTX 5060 顯存</span>
+            <span class="font-mono text-right text-[var(--foreground)]">${cur.vram}</span>
+          </div>
+          <div class="flex justify-between gap-3 py-1 border-b border-[var(--card-border)]">
+            <span class="text-[var(--muted-foreground)] shrink-0">預估耗時</span>
+            <span class="font-mono text-right text-[var(--foreground)]">${cur.speed}</span>
+          </div>
+          <div class="flex justify-between gap-3 py-1 border-b border-[var(--card-border)]">
+            <span class="text-[var(--muted-foreground)] shrink-0">客觀度</span>
+            <span class="text-right text-[var(--foreground)]">${cur.filterFree}</span>
+          </div>
+        </div>
+
+        <div class="space-y-2 text-xs">
+          <div class="font-semibold text-[var(--success)]">v2.0 工程優勢</div>
+          <ul class="list-disc pl-4 space-y-1 text-[var(--foreground)] leading-relaxed">
+            ${cur.pros.map(p => `<li>${p}</li>`).join('')}
+          </ul>
+        </div>
+
+        <div class="space-y-2 text-xs">
+          <div class="font-semibold text-[var(--error)]">已知邊界與風險</div>
+          <ul class="list-disc pl-4 space-y-1 text-[var(--muted-foreground)] leading-relaxed">
+            ${cur.cons.map(c => `<li>${c}</li>`).join('')}
+          </ul>
+        </div>
+
+        <div class="p-3 rounded-md bg-[var(--background)] border border-[var(--card-border)] text-xs leading-relaxed">
+          <span class="font-semibold text-[var(--foreground)]">決策結論：</span>
+          <span class="text-[var(--muted-foreground)]">${cur.verdict}</span>
+        </div>
+      `;
+    }
+
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeFilter = btn.dataset.filter;
+        document.querySelectorAll('.filter-btn').forEach(b => b.setAttribute('aria-pressed', b === btn ? 'true' : 'false'));
+        renderMatrix();
+      });
+    });
+
+    // ==================== TAB 2 RENDER (Dependency Coupled) ====================
+    function syncPresetButtons() {
+      const has = id => enabledModules.has(id);
+      let activePreset = null;
+      if (enabledModules.size === 1 && has('m_probs')) activePreset = 'lite';
+      else if (enabledModules.size === 3 && has('m_probs') && has('m_physics') && has('m_whisper')) activePreset = 'physics';
+      else if (enabledModules.size === 4) activePreset = 'full';
+
+      document.querySelectorAll('.preset-btn').forEach(b => {
+        const active = b.dataset.preset === activePreset;
+        b.className = active
+          ? 'preset-btn px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)] cursor-pointer'
+          : 'preset-btn px-3 py-1.5 text-xs font-medium rounded-md border border-[var(--border)] bg-[var(--background)] hover:border-[var(--primary)] cursor-pointer';
+      });
+    }
+
+    function renderBuilder() {
+      const container = document.getElementById('module-toggles');
+      container.innerHTML = MODULES.map(m => {
+        const checked = enabledModules.has(m.id);
+        return `
+          <label class="block p-3.5 rounded-lg bg-[var(--card)] border transition cursor-pointer ${checked ? 'border-[var(--primary)]' : 'border-[var(--border)] opacity-80'}">
+            <div class="flex items-start gap-3">
+              <input type="checkbox" data-mod="${m.id}" ${checked ? 'checked' : ''} class="mt-0.5 accent-[var(--primary)] w-4 h-4 shrink-0 cursor-pointer" />
+              <div class="space-y-1 flex-1 min-w-0">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="text-sm font-semibold text-[var(--foreground)]">${m.name}</span>
+                  <span class="text-xs px-2 py-0.5 rounded bg-[var(--secondary)] text-[var(--secondary-foreground)]">${m.tag}</span>
+                </div>
+                <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">${m.desc}</p>
+                <div class="flex items-center gap-3 pt-1 text-xs font-mono text-[var(--muted-foreground)]">
+                  <span>+${m.timeMin < 0.2 ? '0.1s' : m.timeMin.toFixed(1) + 'm'}</span>
+                  <span>峰值 ${m.vramGb.toFixed(1)} GB</span>
+                  <span>硬碟 ${m.diskGb.toFixed(1)} GB</span>
+                </div>
+              </div>
+            </div>
+          </label>
+        `;
+      }).join('');
+
+      container.querySelectorAll('input[data-mod]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const id = cb.dataset.mod;
+          if (cb.checked) {
+            enabledModules.add(id);
+            // 強制連動：C (Whisper) 與 D (MuQ) 皆依賴 B (RoFormer 分離音軌)
+            const mod = MODULES.find(x => x.id === id);
+            if (mod && mod.requires) {
+              mod.requires.forEach(req => enabledModules.add(req));
+            }
+          } else {
+            enabledModules.delete(id);
+            // 反向連動：取消 B 時自動取消依賴 B 的 C 與 D
+            MODULES.forEach(m => {
+              if (m.requires && m.requires.includes(id)) {
+                enabledModules.delete(m.id);
+              }
+            });
+          }
+          syncPresetButtons();
+          renderBuilder();
+        });
+      });
+
+      // Telemetry: sequential VRAM release => peak = max single stage VRAM
+      const activeList = MODULES.filter(m => enabledModules.has(m.id));
+      const totalTime = activeList.reduce((acc, m) => acc + m.timeMin, 0);
+      const peakVram = activeList.reduce((acc, m) => Math.max(acc, m.vramGb), 0);
+      const totalDisk = activeList.reduce((acc, m) => acc + m.diskGb, 0);
+
+      document.getElementById('stat-time').textContent =
+        totalTime === 0 ? '0 秒' : (totalTime < 0.2 ? '0.1 秒' : `約 ${totalTime.toFixed(1)} 分鐘`);
+      document.getElementById('stat-vram').textContent = `${peakVram.toFixed(1)} / 6.0 GB`;
+      document.getElementById('stat-disk').textContent = totalDisk === 0 ? '0 MB' : `${totalDisk.toFixed(1)} GB`;
+
+      const vramBadge = document.getElementById('vram-badge');
+      if (peakVram === 0) {
+        vramBadge.textContent = '純 CPU 秒算';
+        vramBadge.style.color = 'var(--success)';
+      } else if (peakVram <= 5.5) {
+        vramBadge.textContent = '符合 <6GB 嚴格約束（循序釋放）';
+        vramBadge.style.color = 'var(--success)';
+      } else {
+        vramBadge.textContent = '接近 6GB 上限';
+        vramBadge.style.color = 'var(--warning)';
+      }
+
+      // Capabilities
+      const caps = {};
+      CAP_LABELS.forEach(({ key }) => {
+        let best = 0;
+        activeList.forEach(m => { best = Math.max(best, m.caps[key]); });
+        if (key === 'talk' && enabledModules.has('m_probs') && enabledModules.has('m_physics')) {
+          best = Math.max(best, 88);
+        }
+        caps[key] = best;
+      });
+
+      document.getElementById('capability-bars').innerHTML = CAP_LABELS.map(({ key, label }) => {
+        const val = caps[key];
+        const barColor = val >= 80 ? 'var(--success)' : (val >= 40 ? 'var(--warning)' : 'var(--muted-foreground)');
+        return `
+          <div class="space-y-1">
+            <div class="flex justify-between text-xs">
+              <span class="text-[var(--foreground)]">${label}</span>
+              <span class="font-mono text-[var(--muted-foreground)]">${val}%</span>
+            </div>
+            <div class="h-2 rounded-full bg-[var(--background)] overflow-hidden border border-[var(--card-border)]">
+              <div class="bar-fill h-full rounded-full" style="width:${val}%; background:${barColor};"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Windows-safe .llc preview (NO /, :, |)
+      const hasProbs = enabledModules.has('m_probs');
+      const hasPhys = enabledModules.has('m_physics');
+      const hasWhisp = enabledModules.has('m_whisper');
+      const hasMuq = enabledModules.has('m_muq');
+
+      document.getElementById('llc-preview').innerHTML = SAMPLE_SONGS.map(song => {
+        const parts = [];
+        let severity = 'ok';
+
+        if (hasProbs && song.probsIssue) {
+          if (song.physics.confirmedInstrumental && hasPhys) {
+            // RoFormer confirms vocals track is silent during guitar solo -> clear false alarm
+          } else {
+            parts.push(song.probsIssue);
+            severity = song.probsIssue.includes('過短') ? 'bad' : 'warn';
+          }
+        }
+        if (hasPhys) {
+          let scoreStr = `音準${song.physics.pitch}_節奏${song.physics.rhythm}_穩${song.physics.stab}`;
+          if (song.physics.pitchBreak) scoreStr += '_破音';
+          parts.push(scoreStr);
+          if (song.physics.pitch < 72 || song.physics.rhythm < 72 || song.physics.stab < 65) severity = 'bad';
+          if (song.physics.talkAt && !hasWhisp) {
+            parts.push(`疑插話@${song.physics.talkAt}`);
+            if (severity === 'ok') severity = 'warn';
+          }
+        }
+        if (hasWhisp && song.whisper) {
+          parts.push(song.whisper);
+          severity = 'bad';
+        }
+        if (hasMuq) {
+          parts.push(`MuQ${song.muq.toFixed(1)}`);
+        }
+
+        let icon = '✅';
+        let borderCol = 'var(--card-border)';
+        let note = '正常保留候選';
+        if (parts.length === 0) {
+          icon = '🎵';
+          note = '未啟用檢測模組';
+        } else if (severity === 'bad') {
+          icon = '🔴';
+          borderCol = 'var(--error)';
+          note = '優先抽聽標記點 → 高機率淘汰';
+        } else if (severity === 'warn') {
+          icon = '🟡';
+          borderCol = 'var(--warning)';
+          note = '建議快速抽聽確認';
+        } else {
+          borderCol = 'var(--success)';
+        }
+
+        const llcLabel = parts.length ? `${icon} [${parts.join(' - ')}] ${song.base}` : `🎵 ${song.base}`;
+        return `
+          <div class="p-2.5 rounded-md bg-[var(--background)] border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2" style="border-color:${borderCol}">
+            <div class="font-mono text-[var(--foreground)] break-all">${llcLabel}</div>
+            <div class="flex items-center gap-2 shrink-0 text-[var(--muted-foreground)]">
+              <span class="font-mono">${song.dur}</span>
+              <span>•</span>
+              <span>${note}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = btn.dataset.preset;
+        if (p === 'lite') enabledModules = new Set(['m_probs']);
+        if (p === 'physics') enabledModules = new Set(['m_probs', 'm_physics', 'm_whisper']);
+        if (p === 'full') enabledModules = new Set(['m_probs', 'm_physics', 'm_whisper', 'm_muq']);
+        syncPresetButtons();
+        renderBuilder();
+      });
+    });
+
+    // Init
+    renderMatrix();
+    syncPresetButtons();
+    renderBuilder();
+  </script>
+</body>
+</html>

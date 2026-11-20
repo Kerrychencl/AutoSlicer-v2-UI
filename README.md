@@ -1,210 +1,133 @@
-# AutoSlicer v2 — 歌回直播自动切片
+# AutoSlicer-v2 直播歌回自動切片系統 (Windows 客製專用版)
 
-**给它一个 B 站链接,它还你一首一首切好的歌。**
+本專案基於 [AutoSlicer-v2](https://github.com/anAtheist987/AutoSlicer-v2) 深度客製，專為 Bilibili 直播錄播設計，集成了**主播專屬聲線辨識模型**、**Windows 一鍵拖曳批次工具鏈**、**LosslessCut 視覺化無損修剪**與**檔案總管 / Mp3tag 中繼資料自動校正**。
 
-主播的歌回动辄三四个小时,想把每首歌单独存下来,要么手动拖进度条找切点,要么等切片
-man 慢慢更新。AutoSlicer 用一个 2.1M 参数的小模型自动完成这件事:识别出**主播本人
-在唱歌**的每一段,直接用 ffmpeg 无损切出独立视频——3 小时的录播,全程不到 1 分钟。
+---
 
-```bash
-python src/infer.py --input "https://www.bilibili.com/video/BVxxxxxxxxxx" \
-    --checkpoint best.pt --out-dir out/ --cut-video
+## 一、 主播專屬聲線模型成果
+
+採用 **16kHz 全頻帶 MelCRNN 架構**（2.1M 輕量模型），能夠從數小時的長錄播中精確分離「目標主播本人演唱」，並自動過濾「聊天放 BGM」、「播放原唱/他人對照」、「純伴奏」與「遊戲雜談」。
+
+兩位專屬主播模型均在 RTX 5060 GPU 上順利完成了 6,000 steps 的長跑訓練，綜合表現達到並超越官方基準（基準 Event-F1 ≈ 0.90）：
+
+| 主播模型 | 訓練樣本規模 | 歌曲抓取召回率 (Recall) | 綜合評分 (Score) | 模型權重存放路徑 |
+| :--- | :--- | :--- | :--- | :--- |
+| **`-菫時-`** | 10 場錄播 (99 首) | **`92.9%`**（起點誤差僅 0.86 秒） | **`0.9112`** | [`runs/-菫時-/best.pt`](runs/-菫時-/best.pt) |
+| **`秋葵`** | 9 場錄播 (98 首) | **`100.0%`（測試集 20 首全中，0 漏檢）** | **`0.9099`** | [`runs/秋葵/best.pt`](runs/秋葵/best.pt) |
+| **`薇Steria`** | 6 場錄播 (69 首) | **`100.0%`（測試集 10 首全中，0 漏檢）** | **`0.9832`** | [`runs/薇Steria/best.pt`](runs/薇Steria/best.pt) |
+| **`随一Suiii`** | 4 場錄播 (39 首) | **`100.0%`（測試集 9 首全中，0 漏檢）** | **`0.9713`** | [`runs/随一Suiii/best.pt`](runs/随一Suiii/best.pt) |
+| **官方預設 (阿梓)** | 原作者基準數據 | 基於原作者發布之通用權重 | `0.8990` | [`best.pt`](best.pt) (根目錄回退) |
+
+---
+
+## 二、 一鍵式工具鏈清單
+
+所有根目錄下的批次腳本均支援**「直接雙擊執行（手動選單）」**與**「將錄播檔案直接拖曳至圖示上」**：
+
+| 工具腳本 | 主要職責 | 耗時預估 | 輸出成果 |
+| :--- | :--- | :--- | :--- |
+| [**`run_slice.bat`**](run_slice.bat) | **全自動一鍵切歌**：AI 辨識 ➔ 無損切出各首歌曲影片 ➔ 注入中繼資料 ➔ 產生 LLC 專案 | 3 小時錄播約 30~50 秒 | `xxx_songNN.mp4`、`xxx-proj.llc` |
+| [**`generate_llc.bat`**](generate_llc.bat) | **極速生成時間軸**：僅運行 AI 辨識並產生專案檔，**不切影片**，供快速手動微調 | 3 小時錄播約 10~15 秒 | `xxx-proj.llc` |
+| [**`import_llc.bat`**](import_llc.bat) | **匯入標註數據**：批次讀取人工打軸完成的 `.llc`，轉化為訓練標註與 CSV 表 | 依場次數量而定 | `data/annotations/` |
+| [**`export_llc.bat`**](export_llc.bat) | **還原時間軸專案**：將既有的訓練標註批次還原為各影片旁的 `.llc` 專案檔 | 數秒 | 各影片目錄之 `.llc` |
+| [**`sync_metadata.bat`**](sync_metadata.bat) | **中繼資料同步修復 (A+C)**：支援直接拖入 LosslessCut 切片，自動逆向溯源原錄播補齊 Comment、Date、Artist 與建立時間 | 數秒 | 更新 MP4 標籤與檔案建立時間 |
+| [**`train_model.bat`**](train_model.bat) | **模型增量/全新訓練**：一鍵提取 Mel 特徵快取，並啟動 6,000 steps 訓練流水線 | 約 30~45 分鐘 (GPU) | `runs/<主播名>/best.pt` |
+
+---
+
+## 三、 推薦實戰工作流
+
+依據需求的不同，推薦以下兩種日常處理模式：
+
+### 模式 A：追求極致省力的「全自動切歌」
+1. 將下載好的錄播影片（`.mp4` / `.flv`）拖入 [**`run_slice.bat`**](run_slice.bat)。
+2. 在彈出的命令提示字元選單中輸入對應主播編號（`1: -菫時-` 或 `2: 秋葵`）。
+3. 程式自動完成 AI 檢測、前後 5 秒緩衝區截取、無損切片與標籤寫入。
+4. 原錄播檔案旁立即產出 `xxx_song01.mp4`、`xxx_song02.mp4`...，可直接觀看或投稿。
+
+### 模式 B：追求 100% 完美的「AI 輔助 + 人工視覺化微調」（最強烈推薦）
+1. 將錄播影片拖入 [**`generate_llc.bat`**](generate_llc.bat)，選擇主播。
+2. 僅需 **10 ~ 15 秒**，原錄播同目錄下即生成 `xxx-proj.llc` 專案檔。
+3. 開啟 **LosslessCut**，將該 `.llc` 檔拖入軟體中：
+   * 所有歌曲區間已精準落在時間軸上。
+   * 手動微調開頭起唱點與結尾（可配合波形檢視並可自訂歌名標籤）。
+   * 點擊 LosslessCut 右下角 **「匯出 (Export)」** 完成最終切片。
+4. **一鍵補齊中繼資料與建立時間**：
+   * 將 LosslessCut 匯出的切片影片（或整包資料夾）直接拖入 [**`sync_metadata.bat`**](sync_metadata.bat)。
+   * 系統將自動啟動 **A+C 智能逆向溯源**，秒級匹配原錄播（或同名 `.xml`），將 Comment、Artist、完整 Date 與 Windows 建立時間全數精確補齊！
+5. *(可選)* 微調後的 `.llc` 可拖入 [**`import_llc.bat`**](import_llc.bat) 累積作為日後模型升級的黃金訓練數據。
+
+> [!TIP]
+> **打軸切片最佳實踐手冊**：
+> 關於結尾哼唱、歌曲中途忘詞插話、唱錯重來、開唱前清唱試音等邊界標記法則與核心理念，詳見專屬指南：[**`docs/LABELING_GUIDE.md`**](docs/LABELING_GUIDE.md)。
+
+---
+
+## 四、 目錄結構與檔案存放規範
+
+為避免工作資料夾混亂，系統採用**嚴格的目錄權責分離設計**：
+
+```
+auto-slicer/
+├── run_slice.bat / generate_llc.bat ...   # 根目錄一鍵執行工具層
+├── best.pt                               # 官方基準模型 (阿梓聲線回退)
+├── runs/                                 # 【模型庫】收納各主播專屬最佳權重
+│   ├── -菫時-/best.pt                    #   -菫時- 專屬最佳權重
+│   ├── 秋葵/best.pt                      #   秋葵 專屬最佳權重
+│   ├── 薇Steria/best.pt                  #   薇Steria 專屬最佳權重
+│   └── 随一Suiii/best.pt                 #   随一Suiii 專屬最佳權重
+├── out/                                  # 【底層輔助資料庫】集中收納，不污染影片目錄
+│   ├── 【主播】...probs.npy              #   逐幀機率分佈 (視覺化/偵錯用)
+│   └── 【主播】...segments.json          #   切點秒數日誌
+├── data/
+│   ├── cache/                            # 【特徵快取庫】(極核心資產)
+│   │   ├── mel/                          #   16kHz Mel 音頻特徵 (每主播約 800MB)
+│   │   └── labels/                       #   逐幀標籤
+│   └── annotations/                      #   人工標註 CSV 庫
+├── scripts/                              # 輔助流水線腳本層
+└── src/                                  # 模型網絡與核心推理演算法
 ```
 
-```
-out/
-├── xxx_song01.mp4      ← 第 1 首歌(含前后 5 秒余量)
-├── xxx_song02.mp4      ← 第 2 首歌
-├── ...
-├── xxx.segments.json   ← 每段的起止时间、耗时统计
-└── xxx.probs.npy       ← 逐帧"正在唱歌"概率曲线(可视化/二次开发用)
-```
+> [!TIP]
+> **硬碟瘦身法則**：
+> 模型重訓時只依賴 `data/cache/` 中的特徵快取。幾十 GB 的原錄播大檔在標註匯入（`import_llc.bat`）或特徵提取完成後，**可安全刪除或移至冷存儲硬碟**。日後有新歌加入重訓時，舊場次會直接讀取快取，完全不需要重新讀取原影片。
 
-## 它聪明在哪
+---
 
-普通的"唱歌检测"模型分不清下面这些场景,AutoSlicer 是按这些场景专门设计训练的:
+## 五、 中繼資料 (Metadata) 自動校正規則
 
-| 场景 | 行为 |
-|---|---|
-| 主播唱歌 | ✂️ 切出来 |
-| 主播放别人的歌、放原唱参考 | 🚫 跳过——它认的是**这个人的声音**,不是"有人在唱" |
-| 间奏、纯伴奏、调音试麦 | 🚫 不会被伴奏骗到 |
-| 唱了一分钟 → 放了一段原唱对比 → 接着唱 | ✂️ 合并成**一个**完整切片,不会切碎 |
-| 唱完聊天五分钟再唱下一首 | ✂️ 切成两个独立切片 |
-| 闲聊、读弹幕、打游戏 | 🚫 跳过 |
+為了讓切出的歌曲在 **Windows 檔案總管** 與 **Mp3tag** 中具備最整齊的展示效果，系統內建了深度標籤格式化：
 
-实测把"阿梓检测器"喂给另一位主播 2.1 小时全程唱歌的歌回:**0 个误切**。
+1. **Windows 建立日期 (CreationTime)**：
+   * 透過底層 Windows API，直接將切片檔案的檔案建立時間改寫為**該場直播開錄的實際時分秒**。
+   * 在 Windows 檔案總管中按「建立日期」排序即可完全還原直播歷史順序。
+2. **演出者 (Artist)**：
+   * 自動過濾錄播姬標題中的房間號與多餘字符（例如：`-菫時- (3473884)` 自動正規化為 `-菫時-`）。
+3. **年份與日期 (Year / Date)**：
+   * 寫入標準 `YYYY-MM-DD HH:MM:SS` 完整時間戳，解決 Mp3tag 僅顯示年份或無法讀取時間的痛點。
+4. **註解 (Comment)**：
+   * 完整保留錄播姬原始直播間資訊與標題。
 
-## 性能
+---
 
-- **准确率**:独立测试集(从未参与训练调参的 2 场录播)事件级 F1 **0.90**——45 首歌
-  命中 40 首、误切 4 段;3 折交叉验证 F1 0.93 ± 0.03
-- **速度**:2.5 小时 VOD 从解码到切完 **15 秒**(不含下载);模型推理是实时的 14000 倍
-- **硬件**:显存 <2GB,任何近十年的 N 卡都跑得动;没有 GPU 加 `--device cpu` 也只要几分钟
-- **体积**:模型 8MB,单文件
+## 六、 關鍵技術細節與常規 Q&A
 
-## 安装
+### Q1：如果有一場直播只有唱 3 首歌，是否要加入訓練？
+* **建議加入，但不用為了 3 首歌特地重訓**：
+  * 這類直播有 95% 以上時間都在聊天、放背景音樂或打遊戲，能為模型提供大量高品質的**「負樣本」**，大幅訓練模型學會「聊天時放 BGM $\neq$ 唱歌」，顯著降低誤切率。
+  * 實戰建議：先用 `import_llc.bat` 存進快取，等後續累積了 3~5 場錄播（或 20~30 首歌）後，再一次性執行 `train_model.bat` 批量更新即可。
 
-```bash
-git clone https://github.com/anAtheist987/AutoSlicer-v2.git && cd AutoSlicer-v2
-pip install .            # 推理依赖;装完有 autoslicer / autoslicer-dl 两个命令
-# ffmpeg 需要在 PATH 里:apt install ffmpeg / brew install ffmpeg
+### Q2：為什麼切片預設前後有 5 秒的緩衝？
+* AutoSlicer 採用 `ffmpeg -c copy` 關鍵幀吸附直拷剪輯，不進行二次重新編碼，速度極快（幾秒鐘切完整場）且畫質零失真。前後配置 5 秒緩衝可防止吞掉前奏或句尾，亦避免關鍵幀解碼破圖。若需精確到毫秒級的切點，推薦採用 **模式 B** 配合 LosslessCut 做微調。
 
-# 下载模型(阿梓声线版,Releases 页也可手动下)
-wget https://github.com/anAtheist987/AutoSlicer-v2/releases/download/v2.1.0/best.pt
-```
+### Q3：雙門檻機制（Hysteresis Thresholding）的作用？
+* 系統預設採用 `--on-threshold = 0.6` 與 `--off-threshold = 0.4`。機率超過 0.6 判定開唱，低於 0.4 才判定唱完；並包含 45 秒間奏自動填補與 90 秒插播合併，避免主播短暫放原唱對照或間奏太長時切片被過度切碎。
 
-训练自己的模型装完整依赖:`pip install ".[train]"`。
+---
 
-### 或者用 Docker(免装环境)
+## 七、 依賴環境
 
-```bash
-docker build -t autoslicer .
-docker run --rm --gpus all -v "$PWD":/work autoslicer \
-    --input "https://www.bilibili.com/video/BVxxxxxxxxxx" \
-    --checkpoint /work/best.pt --out-dir /work/out --cut-video
-# 没有 N 卡:去掉 --gpus all,加 --device cpu
-```
-
-## 使用
-
-### 1. B 站链接直接切(最常用)
-
-```bash
-python src/infer.py --input "https://www.bilibili.com/video/BVxxxxxxxxxx" \
-    --checkpoint best.pt --out-dir out/ --cut-video
-```
-
-BV 号、av 号、`b23.tv` 短链都认,会自动模拟浏览器下载后切片:
-
-```bash
-python src/infer.py --input BVxxxxxxxxxx --checkpoint best.pt --cut-video
-python src/infer.py --input "https://b23.tv/xxxxxx" --checkpoint best.pt --cut-video
-```
-
-- 多 P 录播用 `--page 2` 选分 P
-- 不登录能拿到 480p 视频 + 192kbps 音频(识别完全够用);想要高清切片,从浏览器
-  开发者工具里复制自己的 Cookie:`--cookie "SESSDATA=..."`
-- 不加 `--cut-video` 则只下音频做检测,几秒钟出 `segments.json` 切点表,适合先
-  预览再决定切不切
-
-### 2. 本地文件
-
-录播姬、BBDown 等工具下好的文件直接喂,视频音频格式都行(mp4/flv/mkv/m4a/mp3/wav...):
-
-```bash
-python src/infer.py --input 录播.flv --checkpoint best.pt --out-dir out/ --cut-video
-```
-
-### 3. 只用下载器
-
-```bash
-python src/bilibili.py "https://www.bilibili.com/video/BVxxxxxxxxxx" --out-dir downloads
-python src/bilibili.py BVxxxxxxxxxx --video        # 连视频一起下并合流成 mp4
-```
-
-支持断点续传和备用 CDN 自动切换。
-
-### 4. 读懂输出
-
-`segments.json` 里每段长这样:
-
-```json
-{
-  "start": 1234.5,        // 检测到开唱的时刻(秒)
-  "end": 1480.2,          // 检测到唱完的时刻
-  "cut_start": 1229.5,    // 实际切片起点(自动加了 5 秒余量)
-  "cut_end": 1485.2
-}
-```
-
-切片用 `ffmpeg -c copy` 流复制,**不重编码**:画质无损、切 17 首歌只要几秒。
-
-### 5. 调节松紧
-
-| 想要 | 加参数 |
-|---|---|
-| 少漏歌(宁可多切) | `--on-threshold 0.4` |
-| 少误切(宁可漏) | `--on-threshold 0.7` |
-
-进阶旋钮在 `src/postprocess.py` 的 `PostProcessConfig` 里,都有注释:多近的两首歌合并
-成一个切片(`merge_gap_s`,默认 90 秒,这就是"唱歌→放原唱→接着唱算一首"的来源)、
-最短算一首歌的时长(`min_song_s`)、切片前后余量(`pad_*_s`)等。
-
-## 训练你自己主播的模型
-
-仓库自带的模型认的是[阿梓](https://space.bilibili.com/7706705)的声线。换主播需要重训,
-两条路:
-
-### 路线 A:有人工标注(效果最好)
-
-用 Adobe Audition / 剪映等工具在几场歌回上把每首歌标出来,导出 tab 分隔 csv
-(Name/Start/Duration 三列)。4-6 场标注就够达到 F1 0.9 水平:
-
-```bash
-# 1. 音频转 16kHz 全频带 log-mel 缓存
-python scripts/cache_fullband.py
-# 2. 由标注生成逐帧标签 + 训练/验证清单(参考 scripts/gold_azusa.py 改主播名)
-python scripts/build_v2_labels.py
-# 3. 训练(单卡 ~45 分钟,8.9GB 显存;batch 减半则 ~4.5GB)
-python src/train.py --model crnn --run-name my_streamer --gpu 0 \
-    --classes 4 --bandlimit-prob 0.4 \
-    --manifest data/processed/v2_train.json --val-manifest data/processed/v2_val.json \
-    --steps 8000 --val-every 1000
-# 4. 在验证集上自动选后处理阈值
-python scripts/eval_dump.py --checkpoint runs/my_streamer/best.pt \
-    --val-manifest data/processed/v2_val.json --out-dir runs/my_streamer/val_probs
-python scripts/tune_postprocess.py --probs-dir runs/my_streamer/val_probs
-```
-
-### 路线 B:一行标注都没有(自监督冷启动)
-
-数据工厂全自动:HTDemucs 把歌回分离成人声/伴奏 → 用"人声能量 + 音高稳定度"打
-伪标签(唱歌时音高有持续稳定段,说话没有)→ 拿其他主播的歌回当"他人唱歌"难负例 →
-stem 重混合成"伴奏配错人声"等干扰样本:
-
-```bash
-python scripts/separate_all.py --gpu 0      # 人声/伴奏分离(最耗时的一步)
-python scripts/pseudo_label.py              # 伪标签
-python scripts/make_synthetic.py --target 歌回【你的主播】
-python scripts/build_manifests.py --target 歌回【你的主播】
-python src/train.py ...                     # 同上
-```
-
-我们用这条路线在零标注下做到了伪标签验证 F1 0.98。两条路线可以接力:先 B 后 A。
-
-## 常见问题
-
-**没有 N 卡能用吗?** 能。`--device cpu`,2.5 小时 VOD 大约 3-5 分钟出结果。
-
-**为什么有一首歌没切出来 / 多切了一段?** 看 `probs.npy` 概率曲线就知道模型当时的
-"心理活动";通常调 `--on-threshold` 就能解决。清唱(无伴奏)和 1 分钟以内的短歌
-是已知弱项。
-
-**切点准吗?** 平均误差十秒上下,且默认前后各放 5 秒余量,一般不掐头去尾。要精修
-可以拿 `segments.json` 导入剪辑软件微调。
-
-**直播间直接切吗?** 目前面向录播(VOD)。模型本身是流式友好的(因果卷积 + GRU),
-实时版在路线图上。
-
-**模型多大,要什么环境?** 8MB / PyTorch ≥ 2.0 / Python ≥ 3.10。
-
-## 技术细节
-
-架构、四类输出头设计、自监督数据工厂、交叉验证协议、全部实验数字,见
-**[reports/FINAL_REPORT.md](reports/FINAL_REPORT.md)**;SOTA 调研在
-[notes/RESEARCH.md](notes/RESEARCH.md)。一句话版本:16kHz 全频带 log-mel → 4 层
-CNN(16× 时间池化)→ BiGRU → 4 类 powerset 帧分类(无人声 / **本人唱** / 他人唱 /
-纯伴奏)→ 中值平滑 + 滞回双阈值 + 间隙合并 → ffmpeg。
-
-| 路径 | 内容 |
-|---|---|
-| `src/` | 模型 / 特征 / 训练 / 推理 / 后处理 / B站下载 |
-| `scripts/` | 数据工厂(解压/分离/伪标签/合成/标签/调参/评估) |
-| `notes/` `reports/` | 调研、设计、工作日志、最终报告 |
-
-## 许可证与声明
-
-代码 [MIT](LICENSE)。训练数据(主播 VOD)不随仓库分发。B 站下载模块仅供个人学习
-研究:请遵守 bilibili 服务条款,尊重主播对其内容的权利,**切片二次发布前请确认获得
-主播授权**。前代项目:[AutoSlicer v1](https://github.com/anAtheist987/AutoSlicer)(2021)。
+* **作業系統**：Windows 10 / 11 64-bit
+* **核心環境**：Python 3.10+、PyTorch（建議支援 CUDA 12.x）、PowerShell 5.1+
+* **多媒體引擎**：[ffmpeg](https://ffmpeg.org/)（需已加入系統環境變數 `PATH`）
+* **推薦輔助軟體**：[LosslessCut](https://github.com/mifi/lossless-cut)、[Mp3tag](https://www.mp3tag.de/)

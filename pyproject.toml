@@ -47,6 +47,7 @@ py-modules = [
     "dataset",
     "features",
     "infer",
+    "media_utils",
     "metrics",
     "models",
     "panns",

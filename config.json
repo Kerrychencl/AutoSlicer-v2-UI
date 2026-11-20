@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "paths": {
+    "watch_dirs": [
+      {
+        "label": "主錄播目錄",
+        "path": "E:/Bilibili livestream/recordings",
+        "enabled": true
+      },
+      {
+        "label": "B站下載錄播",
+        "path": "E:/Bilibili livestream/Bilibili live downloder",
+        "enabled": true
+      }
+    ],
+    "default_download_root": "",
+    "archive_clip_root": "",
+    "losslesscut_exe": "",
+    "runs_dir": "runs",
+    "annotations_dir": "data/annotations"
+  },
+  "streamer_model_map": {
+    "-菫時-": "",
+    "秋葵": "",
+    "薇Steria": "",
+    "随一Suiii": "",
+    "_default": ""
+  },
+  "inference_defaults": {
+    "mode": "llc",
+    "on_threshold": 0.6,
+    "off_threshold": 0.4,
+    "merge_gap_s": 90,
+    "min_song_s": 50,
+    "pad_s": 5
+  },
+  "metadata_defaults": {
+    "sync_creation_time": true,
+    "strip_qc_tags": true
+  },
+  "bilibili": {
+    "sessdata": "",
+    "prefer_video": false
+  },
+  "ui": {
+    "window_width": 1200,
+    "window_height": 780,
+    "log_drawer_expanded": false,
+    "last_streamer_filter": "全部"
+  },
+  "ui.window_width": 1920,
+  "ui.window_height": 1009,
+  "ui.log_drawer_expanded": true
+}

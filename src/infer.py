@@ -14,17 +14,30 @@ Outputs:
 from __future__ import annotations
 
 import argparse
+import ctypes
+from ctypes import wintypes
+from datetime import datetime
 import json
+import os
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).parent))
 from features import FeatureConfig, LogMel, load_audio  # noqa: E402
+from media_utils import clean_artist, extract_date_info, get_media_metadata, set_file_times_windows  # noqa: E402
 from models import build_model  # noqa: E402
 from postprocess import PostProcessConfig, probs_to_segments  # noqa: E402
 
@@ -69,23 +82,43 @@ def predict_probs(wav: torch.Tensor, model: torch.nn.Module, device: torch.devic
     return probs / np.maximum(weight, 1)
 
 
+
 def cut_video(input_path: Path, segments: list[dict], out_dir: Path, stem: str) -> list[Path]:
     """Cut clips with stream copy when possible (fast); re-encode audio-only boundaries are
-    handled by -ss before -i (keyframe snap) plus a small pad already added upstream."""
+    handled by -ss before -i (keyframe snap) plus a small pad already added upstream.
+    Preserves and formats metadata (artist, comment, full date for mp3tag), and sets Windows file timestamps."""
+    tags = get_media_metadata(input_path)
+    raw_artist = tags.get("artist") or tags.get("ARTIST")
+    cleaned_artist = clean_artist(raw_artist, input_path.name)
+    comment = tags.get("comment") or tags.get("description") or tags.get("COMMENT") or ""
+    date_str, target_dt = extract_date_info(input_path.name, comment, tags, input_path)
+
+    meta_args = []
+    if cleaned_artist:
+        meta_args.extend(["-metadata", f"artist={cleaned_artist}"])
+    if comment:
+        meta_args.extend(["-metadata", f"comment={comment}"])
+    if date_str:
+        meta_args.extend(["-metadata", f"date={date_str}"])
+        meta_args.extend(["-metadata", f"year={date_str}"])
+
     outs = []
     for i, seg in enumerate(segments, 1):
         out = out_dir / f"{stem}_song{i:02d}.mp4"
         dur = seg["cut_end"] - seg["cut_start"]
         cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{seg['cut_start']:.2f}",
-               "-i", str(input_path), "-t", f"{dur:.2f}",
+               "-i", str(input_path), "-t", f"{dur:.2f}"] + meta_args + [
                "-c", "copy", "-avoid_negative_ts", "make_zero", str(out)]
         r = subprocess.run(cmd, capture_output=True)
         if r.returncode != 0:  # fall back to re-encode (e.g. odd containers)
             cmd = ["ffmpeg", "-y", "-v", "error", "-ss", f"{seg['cut_start']:.2f}",
-                   "-i", str(input_path), "-t", f"{dur:.2f}",
+                   "-i", str(input_path), "-t", f"{dur:.2f}"] + meta_args + [
                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
                    "-c:a", "aac", str(out)]
             subprocess.run(cmd, check=True, capture_output=True)
+
+        if target_dt:
+            set_file_times_windows(out, target_dt)
         outs.append(out)
     return outs
 
@@ -95,7 +128,8 @@ def main():
     ap.add_argument("--input", required=True,
                     help="local video/audio file, or a bilibili URL / BV id / b23.tv link")
     ap.add_argument("--checkpoint", required=True)
-    ap.add_argument("--out-dir", default="out")
+    ap.add_argument("--out-dir", default="out", help="directory for analysis data (.probs.npy, .segments.json)")
+    ap.add_argument("--clip-out-dir", default=None, help="directory for cut video clips and .llc (defaults to video's parent dir)")
     ap.add_argument("--gpu", type=int, default=0)
     ap.add_argument("--device", default=None, help="'cpu' to force CPU")
     ap.add_argument("--cut-video", action="store_true")
@@ -105,7 +139,12 @@ def main():
     ap.add_argument("--cookie", default=None, help='bilibili "SESSDATA=..." for higher video quality')
     args = ap.parse_args()
 
-    device = torch.device(args.device if args.device else f"cuda:{args.gpu}")
+    if args.device:
+        device = torch.device(args.device)
+    elif torch.cuda.is_available():
+        device = torch.device(f"cuda:{args.gpu}")
+    else:
+        device = torch.device("cpu")
     ckpt = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     model_name = ckpt["args"]["model"]
     model = build_model(model_name, **json.loads(ckpt["args"].get("model_kwargs", "{}")))
@@ -121,6 +160,15 @@ def main():
         print(f"downloaded -> {inp}", flush=True)
     else:
         inp = Path(args.input)
+
+    # 決定切片影片 (.mp4) 與 LosslessCut 專案檔 (.llc) 的存放目錄
+    if args.clip_out_dir:
+        clip_dir = Path(args.clip_out_dir)
+    elif inp.is_file():
+        clip_dir = inp.parent
+    else:
+        clip_dir = out_dir
+    clip_dir.mkdir(parents=True, exist_ok=True)
 
     fcfg = FeatureConfig()
     t0 = time.time()
@@ -139,6 +187,7 @@ def main():
         pcfg.off_threshold = args.off_threshold
     segments = probs_to_segments(probs, pcfg, total_duration_s=dur_s)
 
+    # 輔助數據檔 (.probs.npy, .segments.json) 統一存放於 out_dir (例如 auto-slicer/out)
     np.save(out_dir / f"{inp.stem}.probs.npy", probs)
     result = {
         "input": str(inp), "duration_s": round(dur_s, 1),
@@ -148,13 +197,31 @@ def main():
         "segments": segments,
     }
     (out_dir / f"{inp.stem}.segments.json").write_text(
-        json.dumps(result, indent=2, ensure_ascii=False))
+        json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    # 輸出 LosslessCut 專案檔 (.llc) 放置於原影片/切片目錄 (clip_dir)
+    llc_data = {
+        "version": 2,
+        "mediaFileName": inp.name,
+        "cutSegments": [
+            {
+                "start": round(seg["cut_start"], 3),
+                "end": round(seg["cut_end"], 3),
+                "name": f"Song_{i:02d}",
+                "selected": True,
+            }
+            for i, seg in enumerate(segments, 1)
+        ]
+    }
+    llc_content = json.dumps(llc_data, indent=2, ensure_ascii=False)
+    (clip_dir / f"{inp.stem}-proj.llc").write_text(llc_content, encoding="utf-8")
+
     print(json.dumps(result, indent=2, ensure_ascii=False))
 
     if args.cut_video and segments:
         t0 = time.time()
-        outs = cut_video(inp, segments, out_dir, inp.stem)
-        print(f"cut {len(outs)} clips in {time.time()-t0:.1f}s", flush=True)
+        outs = cut_video(inp, segments, clip_dir, inp.stem)
+        print(f"cut {len(outs)} clips in {time.time()-t0:.1f}s -> {clip_dir}", flush=True)
 
 
 if __name__ == "__main__":
