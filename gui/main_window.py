@@ -62,7 +62,7 @@ class MainWindow(QMainWindow):
         self._load_registered_pages()
 
     def _restore_window_state(self):
-        ui_cfg = self.config.get("ui", {})
+        ui_cfg = self.config.get_ui_config() if hasattr(self.config, "get_ui_config") else self.config.get("ui", {})
         width = int(ui_cfg.get("window_width", 1200))
         height = int(ui_cfg.get("window_height", 780))
         self.resize(max(960, width), max(640, height))
@@ -123,7 +123,8 @@ class MainWindow(QMainWindow):
         self.stacked_widget.setObjectName("centralWorkArea")
 
         # Bottom Queue Drawer
-        initial_expanded = bool(self.config.get("ui.log_drawer_expanded", False))
+        ui_cfg = self.config.get_ui_config() if hasattr(self.config, "get_ui_config") else self.config.get("ui", {})
+        initial_expanded = bool(ui_cfg.get("log_drawer_expanded", False))
         self.queue_drawer = QueueDrawer(
             queue_manager=self.queue_manager,
             expanded=initial_expanded,
@@ -188,6 +189,13 @@ class MainWindow(QMainWindow):
         # Switch to first page
         if first_page_id:
             self.switch_page(first_page_id)
+
+        # Cross-page signal routing: connect download_completed to dashboard_page.trigger_rescan
+        dash_page = self._page_instances.get("dashboard")
+        down_page = self._page_instances.get("download")
+        if dash_page and down_page:
+            if hasattr(down_page, "download_completed") and hasattr(dash_page, "trigger_rescan"):
+                down_page.download_completed.connect(lambda _target="": dash_page.trigger_rescan())
 
     def _register_default_page_fallbacks(self):
         """Attempt to discover and register default workbench pages if registry is empty."""
@@ -360,10 +368,16 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Save UI layout state to config.json before exit."""
         try:
-            self.config.set("ui.window_width", self.width())
-            self.config.set("ui.window_height", self.height())
-            self.config.set("ui.log_drawer_expanded", self.queue_drawer.is_expanded())
-            self.config.save()
+            if hasattr(self.config, "update_ui_config"):
+                self.config.update_ui_config({
+                    "window_width": self.width(),
+                    "window_height": self.height(),
+                    "log_drawer_expanded": self.queue_drawer.is_expanded(),
+                })
+            else:
+                self.config.set("ui.window_width", self.width(), auto_save=False)
+                self.config.set("ui.window_height", self.height(), auto_save=False)
+                self.config.set("ui.log_drawer_expanded", self.queue_drawer.is_expanded(), auto_save=True)
         except Exception:
             pass
 

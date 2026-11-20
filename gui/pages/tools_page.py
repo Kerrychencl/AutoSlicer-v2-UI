@@ -361,6 +361,34 @@ class ToolsPage(BasePage):
             self._mode_c_ref = Path(chosen)
             self.ref_path_edit.setText(chosen)
 
+    def handle_dropped_files(self, paths: list[str]) -> None:
+        """Route drag-and-dropped files from main window into appropriate drop zones."""
+        clip_candidates: list[str] = []
+        llc_candidates: list[str] = []
+
+        for p_str in paths:
+            p = Path(p_str)
+            if not p.exists():
+                continue
+            ext = p.suffix.lower()
+            if ext in [".llc", ".json"]:
+                llc_candidates.append(p_str)
+            elif ext in [".mp4", ".flv", ".mkv", ".ts", ".m4a"]:
+                clip_candidates.append(p_str)
+            elif ext == ".xml":
+                self._mode_c_ref = p
+                self.ref_path_edit.setText(str(p))
+            elif p.is_dir():
+                if list(p.glob("*.llc")) or list(p.glob("*/*.llc")):
+                    llc_candidates.append(p_str)
+                else:
+                    clip_candidates.append(p_str)
+
+        if clip_candidates:
+            self._on_clips_dropped(clip_candidates)
+        if llc_candidates:
+            self._on_llc_dropped(llc_candidates)
+
     def _on_clear_mode_c_ref(self) -> None:
         self._mode_c_ref = None
         self.ref_path_edit.clear()
@@ -376,9 +404,14 @@ class ToolsPage(BasePage):
 
         targets.extend(self._clip_paths)
 
+        sync_creation = self.sync_creation_time_check.isChecked()
+        strip_qc = self.strip_qc_tags_check.isChecked()
+
         cmd = CommandBuilder.build_sync_metadata_command(
             repo_root=self.config.project_root,
             target_paths=targets,
+            sync_creation_time=sync_creation,
+            strip_qc_tags=strip_qc,
         )
 
         mode_str = f"Mode C (參考: {self._mode_c_ref.name})" if self._mode_c_ref else "Mode A 自動溯源"
@@ -392,6 +425,8 @@ class ToolsPage(BasePage):
                 "action": "sync_metadata",
                 "clip_count": len(self._clip_paths),
                 "mode_c": self._mode_c_ref is not None,
+                "sync_creation_time": sync_creation,
+                "strip_qc_tags": strip_qc,
             },
         )
 
@@ -434,13 +469,17 @@ class ToolsPage(BasePage):
             self.show_warning("未選取專案檔", "請先拖入至少一個 LosslessCut .llc 專案檔或資料夾。")
             return
 
+        streamer_sel = self.streamer_combo.currentText().strip()
+        streamer_arg = None if (not streamer_sel or streamer_sel.startswith("自動")) else streamer_sel
+
         cmd = CommandBuilder.build_import_llc_command(
             repo_root=self.config.project_root,
             target_paths=self._llc_paths,
+            streamer=streamer_arg,
         )
 
-        streamer_sel = self.streamer_combo.currentText().strip()
-        task_title = f"[匯入打軸] 共 {len(self._llc_paths)} 個 .llc 專案 [{streamer_sel}]"
+        streamer_desc = streamer_arg or "自動識別"
+        task_title = f"[匯入打軸] 共 {len(self._llc_paths)} 個 .llc 專案 [{streamer_desc}]"
 
         task = TaskItem(
             title=task_title,
@@ -449,7 +488,7 @@ class ToolsPage(BasePage):
             metadata={
                 "action": "import_llc",
                 "llc_count": len(self._llc_paths),
-                "streamer": streamer_sel,
+                "streamer": streamer_arg,
             },
         )
 

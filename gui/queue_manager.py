@@ -97,6 +97,9 @@ class QueueManager(QObject):
 
     def add_task(self, task: TaskItem) -> str:
         """Enqueue a new task and trigger processing if idle."""
+        if not self._pending_tasks and self._current_task is None:
+            self._is_paused = False
+
         task.status = TaskStatus.PENDING
         self._pending_tasks.append(task)
         self.task_added.emit(task)
@@ -106,6 +109,9 @@ class QueueManager(QObject):
 
     def add_tasks(self, tasks: list[TaskItem]) -> list[str]:
         """Enqueue multiple tasks in order."""
+        if not self._pending_tasks and self._current_task is None and tasks:
+            self._is_paused = False
+
         ids: list[str] = []
         for t in tasks:
             t.status = TaskStatus.PENDING
@@ -278,6 +284,15 @@ class QueueManager(QObject):
             self._current_task.error_message = error_desc
             self._current_task.log_lines.append(f"[錯誤] {error_desc}")
             self.task_log.emit(self._current_task, f"[錯誤] {error_desc}")
+            if not self._runner.is_running():
+                task = self._current_task
+                task.status = TaskStatus.FAILED
+                task.finished_at = time.time()
+                self._current_task = None
+                self._finished_tasks.insert(0, task)
+                self.task_failed.emit(task, error_desc)
+                self.queue_updated.emit()
+                self._process_next()
 
     def _on_runner_cancelled(self) -> None:
         if self._current_task:

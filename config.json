@@ -43,12 +43,9 @@
     "prefer_video": false
   },
   "ui": {
-    "window_width": 1200,
-    "window_height": 780,
+    "window_width": 1346,
+    "window_height": 800,
     "log_drawer_expanded": false,
     "last_streamer_filter": "全部"
-  },
-  "ui.window_width": 1920,
-  "ui.window_height": 1009,
-  "ui.log_drawer_expanded": true
+  }
 }

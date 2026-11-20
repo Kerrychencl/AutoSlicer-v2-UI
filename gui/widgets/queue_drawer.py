@@ -87,6 +87,19 @@ class QueueDrawer(QFrame):
         self.cancel_btn.setToolTip("中止目前正在執行的子行程（5秒內強行終止進程樹）")
         self.cancel_btn.clicked.connect(self._on_cancel_clicked)
 
+        # Resume queue button (shown when paused with pending items)
+        self.btn_resume = QPushButton("▶ 繼續佇列", self.status_bar)
+        self.btn_resume.setObjectName("primaryButton")
+        self.btn_resume.setProperty("class", "primary")
+        self.btn_resume.setVisible(False)
+        self.btn_resume.clicked.connect(self._on_resume_clicked)
+
+        # Clear pending tasks button (shown when paused or multiple pending)
+        self.btn_clear_pending = QPushButton("清空待執行", self.status_bar)
+        self.btn_clear_pending.setProperty("class", "compact")
+        self.btn_clear_pending.setVisible(False)
+        self.btn_clear_pending.clicked.connect(self._on_clear_pending_clicked)
+
         # Expand / Collapse toggle button
         self.toggle_btn = QPushButton("詳細佇列與日誌 ▲", self.status_bar)
         self.toggle_btn.setObjectName("toggleDrawerBtn")
@@ -95,6 +108,8 @@ class QueueDrawer(QFrame):
         status_layout.addWidget(self.status_label, stretch=1)
         status_layout.addWidget(self.progress_bar)
         status_layout.addWidget(self.queue_count_label)
+        status_layout.addWidget(self.btn_resume)
+        status_layout.addWidget(self.btn_clear_pending)
         status_layout.addWidget(self.cancel_btn)
         status_layout.addWidget(self.toggle_btn)
 
@@ -354,9 +369,30 @@ class QueueDrawer(QFrame):
 
         self.queue_count_label.setText(f"排隊中: {pending_count} 筆")
         self.cancel_btn.setEnabled(is_running)
-        if not is_running and not self.progress_bar.isVisible():
-            self.status_label.setText("佇列閒置")
-            self.status_label.setStyleSheet("font-weight: 600; color: #9ca3af; font-size: 13px;")
+
+        is_paused = getattr(self._queue_manager, "is_paused", False)
+        if is_paused and pending_count > 0:
+            self.btn_resume.setVisible(True)
+            self.btn_clear_pending.setVisible(True)
+            self.status_label.setText("佇列已暫停")
+            self.status_label.setStyleSheet("font-weight: 600; color: #f59e0b; font-size: 13px;")
+            self.progress_bar.setVisible(False)
+        else:
+            self.btn_resume.setVisible(False)
+            self.btn_clear_pending.setVisible(False)
+            if not is_running and not self.progress_bar.isVisible():
+                self.status_label.setText("佇列閒置")
+                self.status_label.setStyleSheet("font-weight: 600; color: #9ca3af; font-size: 13px;")
+
+    def _on_resume_clicked(self):
+        if self._queue_manager and hasattr(self._queue_manager, "resume_queue"):
+            self._queue_manager.resume_queue()
+            self.refresh_tasks()
+
+    def _on_clear_pending_clicked(self):
+        if self._queue_manager and hasattr(self._queue_manager, "clear_pending"):
+            self._queue_manager.clear_pending()
+            self.refresh_tasks()
 
     def _on_cancel_clicked(self):
         if self._queue_manager and hasattr(self._queue_manager, "cancel_current_task"):
@@ -422,5 +458,7 @@ class QueueDrawer(QFrame):
             for t in tasks:
                 if getattr(t, "id", None) == task_id:
                     cmd = getattr(t, "command", [])
-                    QApplication.clipboard().setText(" ".join(cmd))
+                    cmd_str = " ".join(cmd) if isinstance(cmd, list) else str(cmd)
+                    from ..runner import sanitize_text
+                    QApplication.clipboard().setText(sanitize_text(cmd_str))
                     break

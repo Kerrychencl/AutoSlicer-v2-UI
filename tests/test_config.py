@@ -108,6 +108,57 @@ class TestConfigManager(unittest.TestCase):
         self.assertEqual(cm2.data["ui"]["window_width"], 1440)
         self.assertEqual(cm2.data["bilibili"]["sessdata"], "test_cookie_123")
 
+    def test_set_losslesscut_exe(self):
+        """Verify set_losslesscut_exe sets path and persists if auto_save."""
+        from gui.config import ConfigManager
+
+        cm = ConfigManager(config_path=self.config_path)
+        test_exe = "D:/Tools/LosslessCut.exe"
+        cm.set_losslesscut_exe(test_exe, auto_save=True)
+
+        cm2 = ConfigManager(config_path=self.config_path)
+        self.assertEqual(cm2.data["paths"]["losslesscut_exe"], test_exe)
+
+    def test_dirty_keys_cleanup(self):
+        """Verify legacy flat dirty keys like 'ui.window_width' are migrated into nested dict and removed."""
+        from gui.config import ConfigManager
+
+        dirty_json = {
+            "version": 1,
+            "ui.window_width": 1600,
+            "ui.window_height": 900,
+            "ui.log_drawer_expanded": True,
+            "paths": {"watch_dirs": []},
+        }
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            json.dump(dirty_json, f, indent=2)
+
+        cm = ConfigManager(config_path=self.config_path)
+        cfg = cm.data
+
+        # Top-level dirty keys must be purged
+        self.assertNotIn("ui.window_width", cfg)
+        self.assertNotIn("ui.window_height", cfg)
+        self.assertNotIn("ui.log_drawer_expanded", cfg)
+
+        # Values migrated into nested 'ui' dict
+        self.assertEqual(cfg["ui"]["window_width"], 1600)
+        self.assertEqual(cfg["ui"]["window_height"], 900)
+        self.assertTrue(cfg["ui"]["log_drawer_expanded"])
+
+    def test_update_ui_config(self):
+        """Verify update_ui_config writes and persists changes."""
+        from gui.config import ConfigManager
+
+        cm = ConfigManager(config_path=self.config_path)
+        cm.update_ui_config({"window_width": 1366, "window_height": 768, "log_drawer_expanded": True})
+
+        cm2 = ConfigManager(config_path=self.config_path)
+        ui = cm2.get_ui_config()
+        self.assertEqual(ui["window_width"], 1366)
+        self.assertEqual(ui["window_height"], 768)
+        self.assertTrue(ui["log_drawer_expanded"])
+
 
 if __name__ == "__main__":
     unittest.main()

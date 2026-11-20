@@ -483,6 +483,7 @@ class DownloadPage(BasePage):
                     "target_dir": str(target_dir),
                     "input": item,
                     "video": is_video,
+                    "rescan_dashboard": True,
                 },
             )
             tasks.append(task)

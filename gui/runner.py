@@ -2,14 +2,17 @@
 
 Features:
 - Prepares sys.executable calls with UTF-8 env: PYTHONUTF8=1, PYTHONIOENCODING=utf-8, PYTHONUNBUFFERED=1
+- Closes child stdin via closeWriteChannel() to prevent subprocess deadlock
+- Incremental UTF-8 decoder with line buffering to prevent multibyte chunk splitting
 - Regex stream parser for output progress extraction
 - Output sanitation hiding sensitive parameters (e.g. SESSDATA, cookies)
-- Process tree termination using taskkill /PID <pid> /T /F on cancel
+- Process tree termination using taskkill /PID <pid> /T /F with CREATE_NO_WINDOW on cancel
 - Command builders strictly aligned with CLI interfaces of src/ and scripts/
 """
 
 from __future__ import annotations
 
+import codecs
 import os
 from pathlib import Path
 import re
@@ -26,6 +29,9 @@ PROGRESS_REGEXES = [
     re.compile(r"(\d+)/(\d+)\s+files", re.IGNORECASE),      # "4/12 files"
 ]
 
+SESSDATA_REGEX = re.compile(r"(SESSDATA=)[^;&\s\"']+", re.IGNORECASE)
+
+
 def sanitize_text(text: str) -> str:
     """Mask sensitive credentials like SESSDATA or cookies from logs and commands."""
     if not text:
@@ -33,7 +39,7 @@ def sanitize_text(text: str) -> str:
     # Mask --cookie <val> with --cookie ***
     text = re.sub(r"(--cookie\s+)(?:\"[^\"]*\"|'[^']*'|[^\s]+)", r"\1***", text, flags=re.IGNORECASE)
     # Mask any standalone SESSDATA=... with SESSDATA=***
-    text = re.sub(r"(SESSDATA=)[^;&\s\"']+", r"\1***", text, flags=re.IGNORECASE)
+    text = SESSDATA_REGEX.sub(r"\1***", text)
     return text
 
 
@@ -59,6 +65,8 @@ class ProcessRunner(QObject):
         self._pid: int | None = None
         self._is_cancelled: bool = False
         self._last_progress: int = -1
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self._line_buffer: str = ""
 
     @property
     def pid(self) -> int | None:
@@ -85,6 +93,8 @@ class ProcessRunner(QObject):
         self._is_cancelled = False
         self._last_progress = -1
         self._pid = None
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self._line_buffer = ""
 
         # Build clean environment with enforced UTF-8 settings
         env = QProcessEnvironment.systemEnvironment()
@@ -106,6 +116,8 @@ class ProcessRunner(QObject):
         self.output_received.emit(f"[*] 執行指令: {preview_cmd}")
 
         self._process.start(program, arguments)
+        # Close write channel (child stdin) immediately to avoid subprocess blocking on input
+        self._process.closeWriteChannel()
         return True
 
     def cancel(self, timeout_ms: int = 3000) -> None:
@@ -121,22 +133,25 @@ class ProcessRunner(QObject):
         # Step 1: Normal terminate
         self._process.terminate()
 
-        # Step 2: On Windows, enforce process tree kill via taskkill to clean child processes (ffmpeg/python)
-        if target_pid and sys.platform == "win32":
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(target_pid), "/T", "/F"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
-            except Exception as e:
-                self.output_received.emit(f"[!] taskkill 執行警告: {e}")
+        # Step 2: If not exited within 1500ms, enforce process tree kill via taskkill on Windows
+        if not self._process.waitForFinished(1500):
+            if target_pid and sys.platform == "win32":
+                try:
+                    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    subprocess.run(
+                        ["taskkill", "/PID", str(target_pid), "/T", "/F"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=False,
+                        creationflags=creationflags,
+                    )
+                except Exception as e:
+                    self.output_received.emit(f"[!] taskkill 執行警告: {e}")
 
-        # Step 3: Hard kill if still alive
-        if not self._process.waitForFinished(timeout_ms):
-            self._process.kill()
-            self._process.waitForFinished(1000)
+            # Step 3: Hard kill if still alive after timeout_ms
+            if not self._process.waitForFinished(timeout_ms):
+                self._process.kill()
+                self._process.waitForFinished(1000)
 
         self.process_cancelled.emit()
         self.output_received.emit("[x] 任務已成功中止。")
@@ -146,15 +161,27 @@ class ProcessRunner(QObject):
         self.process_started.emit(self._pid)
 
     def _on_ready_read(self) -> None:
-        raw_data = self._process.readAllStandardOutput().data()
-        try:
-            text = raw_data.decode("utf-8", errors="replace")
-        except Exception:
-            text = raw_data.decode(sys.getdefaultencoding(), errors="replace")
+        raw_bytes = bytes(self._process.readAllStandardOutput().data())
+        decoded = self._decoder.decode(raw_bytes, final=False)
+        self._line_buffer += decoded
 
-        lines = text.splitlines()
-        for line in lines:
-            line_str = line.strip("\r")
+        while "\n" in self._line_buffer or "\r" in self._line_buffer:
+            idx_n = self._line_buffer.find("\n")
+            idx_r = self._line_buffer.find("\r")
+            if idx_n != -1 and idx_r != -1:
+                idx = min(idx_n, idx_r)
+            elif idx_n != -1:
+                idx = idx_n
+            else:
+                idx = idx_r
+
+            line = self._line_buffer[:idx]
+            if idx == idx_r and idx + 1 < len(self._line_buffer) and self._line_buffer[idx + 1] == "\n":
+                self._line_buffer = self._line_buffer[idx + 2:]
+            else:
+                self._line_buffer = self._line_buffer[idx + 1:]
+
+            line_str = line.strip("\r\n")
             if not line_str:
                 continue
 
@@ -190,6 +217,16 @@ class ProcessRunner(QObject):
                         pass
 
     def _on_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
+        # Flush remaining decoded text in line buffer
+        final_decoded = self._decoder.decode(b"", final=True)
+        self._line_buffer += final_decoded
+        if self._line_buffer.strip():
+            line_str = self._line_buffer.strip()
+            self._parse_progress(line_str)
+            sanitized = sanitize_text(line_str)
+            self.output_received.emit(sanitized)
+        self._line_buffer = ""
+
         status_val = exit_status.value if hasattr(exit_status, "value") else int(exit_status)
         self.process_finished.emit(exit_code, int(status_val))
 
@@ -223,6 +260,9 @@ class CommandBuilder:
         cut_video: bool = False,
         on_threshold: float | None = None,
         off_threshold: float | None = None,
+        merge_gap_s: float | None = None,
+        min_song_s: float | None = None,
+        pad_s: float | None = None,
         gpu: int = 0,
         device: str | None = None,
         page: int | None = None,
@@ -253,6 +293,12 @@ class CommandBuilder:
             cmd.extend(["--on-threshold", str(on_threshold)])
         if off_threshold is not None:
             cmd.extend(["--off-threshold", str(off_threshold)])
+        if merge_gap_s is not None:
+            cmd.extend(["--merge-gap-s", str(merge_gap_s)])
+        if min_song_s is not None:
+            cmd.extend(["--min-song-s", str(min_song_s)])
+        if pad_s is not None:
+            cmd.extend(["--pad-s", str(pad_s)])
         if page is not None:
             cmd.extend(["--page", str(page)])
         if sessdata:
@@ -292,6 +338,8 @@ class CommandBuilder:
     def build_sync_metadata_command(
         repo_root: Path,
         target_paths: list[str | Path],
+        sync_creation_time: bool = True,
+        strip_qc_tags: bool = True,
     ) -> list[str]:
         """Construct CLI call for scripts/sync_clip_metadata.py (Mode A + Mode C)."""
         script_path = (repo_root / "scripts" / "sync_clip_metadata.py").resolve()
@@ -300,6 +348,10 @@ class CommandBuilder:
             "-u",
             str(script_path),
         ]
+        if not sync_creation_time:
+            cmd.append("--no-creation-time")
+        if not strip_qc_tags:
+            cmd.append("--keep-qc-tags")
         cmd.extend(str(p) for p in target_paths)
         return cmd
 
@@ -307,6 +359,7 @@ class CommandBuilder:
     def build_import_llc_command(
         repo_root: Path,
         target_paths: list[str | Path],
+        streamer: str | None = None,
     ) -> list[str]:
         """Construct CLI call for scripts/convert_llc_to_annotations.py."""
         script_path = (repo_root / "scripts" / "convert_llc_to_annotations.py").resolve()
@@ -315,6 +368,8 @@ class CommandBuilder:
             "-u",
             str(script_path),
         ]
+        if streamer:
+            cmd.extend(["--streamer", str(streamer)])
         cmd.extend(str(p) for p in target_paths)
         return cmd
 

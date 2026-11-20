@@ -124,6 +124,14 @@ class ConfigManager(QObject):
             print(f"[ConfigManager] Failed to read {self.config_path}: {e}, falling back to defaults.", file=sys.stderr)
             loaded = {}
 
+        # Clean up flat dirty keys like "ui.window_width"
+        dirty_keys = [k for k in loaded if "." in k or k.startswith("ui.")]
+        for k in dirty_keys:
+            parts = k.split(".", 1)
+            if len(parts) == 2 and parts[0] == "ui":
+                loaded.setdefault("ui", {})[parts[1]] = loaded[k]
+            loaded.pop(k, None)
+
         # Auto-fill missing defaults recursively
         self._data = _deep_merge(loaded, DEFAULT_CONFIG)
 
@@ -234,6 +242,12 @@ class ConfigManager(QObject):
             if p.is_file():
                 return p
         return self.find_losslesscut_exe()
+
+    def set_losslesscut_exe(self, path_str: str, auto_save: bool = True) -> None:
+        """Set LosslessCut executable path in config."""
+        self._data.setdefault("paths", {})["losslesscut_exe"] = path_str
+        if auto_save:
+            self.save()
 
     def find_losslesscut_exe(self) -> Path | None:
         """Search standard Windows installation paths for LosslessCut.exe."""

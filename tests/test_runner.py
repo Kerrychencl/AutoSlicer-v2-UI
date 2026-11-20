@@ -63,6 +63,23 @@ class TestRunnerAndCommands(unittest.TestCase):
         self.assertIn("--cookie", cmd)
         self.assertEqual(cmd[cmd.index("--cookie") + 1], "SESSDATA=sess_val")
 
+    def test_build_infer_command_extended_args(self):
+        """Verify new optional args: merge_gap_s, min_song_s, pad_s."""
+        cmd = CommandBuilder.build_infer_command(
+            repo_root=self.repo_root,
+            input_path="E:/test/vod.mp4",
+            checkpoint="runs/best.pt",
+            merge_gap_s=75.0,
+            min_song_s=40.0,
+            pad_s=3.5,
+        )
+        self.assertIn("--merge-gap-s", cmd)
+        self.assertEqual(cmd[cmd.index("--merge-gap-s") + 1], "75.0")
+        self.assertIn("--min-song-s", cmd)
+        self.assertEqual(cmd[cmd.index("--min-song-s") + 1], "40.0")
+        self.assertIn("--pad-s", cmd)
+        self.assertEqual(cmd[cmd.index("--pad-s") + 1], "3.5")
+
     def test_build_bilibili_download_command(self):
         """Verify CommandBuilder matches src/bilibili.py positional input and options."""
         cmd = CommandBuilder.build_bilibili_download_command(
@@ -99,6 +116,18 @@ class TestRunnerAndCommands(unittest.TestCase):
         script_idx = [i for i, a in enumerate(cmd) if "sync_clip_metadata.py" in a][0]
         self.assertEqual(cmd[script_idx + 1:], targets)
 
+    def test_build_sync_metadata_flags(self):
+        """Verify sync_creation_time=False and strip_qc_tags=False append respective flags."""
+        cmd = CommandBuilder.build_sync_metadata_command(
+            repo_root=self.repo_root,
+            target_paths=["clip.mp4"],
+            sync_creation_time=False,
+            strip_qc_tags=False,
+        )
+        self.assertIn("--no-creation-time", cmd)
+        self.assertIn("--keep-qc-tags", cmd)
+        self.assertIn("clip.mp4", cmd)
+
     def test_build_import_llc_command(self):
         """Verify CommandBuilder matches scripts/convert_llc_to_annotations.py positional targets."""
         targets = ["E:/proj1.llc", "E:/proj2-proj.llc"]
@@ -110,6 +139,50 @@ class TestRunnerAndCommands(unittest.TestCase):
         self.assertTrue(any("convert_llc_to_annotations.py" in arg for arg in cmd))
         script_idx = [i for i, a in enumerate(cmd) if "convert_llc_to_annotations.py" in a][0]
         self.assertEqual(cmd[script_idx + 1:], targets)
+
+    def test_build_import_llc_streamer_flag(self):
+        """Verify streamer override flag."""
+        cmd = CommandBuilder.build_import_llc_command(
+            repo_root=self.repo_root,
+            target_paths=["proj.llc"],
+            streamer="秋葵",
+        )
+        self.assertIn("--streamer", cmd)
+        self.assertEqual(cmd[cmd.index("--streamer") + 1], "秋葵")
+        self.assertIn("proj.llc", cmd)
+
+    def test_incremental_utf8_decoding(self):
+        """Verify multi-byte UTF-8 bytes split across chunks decode without mojibake."""
+        import codecs
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        line_buffer = ""
+        emitted_lines = []
+
+        # "歌回直播 -菫時-" encoded in UTF-8
+        full_text = "歌回直播 -菫時-\n第二行 45%\n"
+        full_bytes = full_text.encode("utf-8")
+
+        # Split intentionally in the middle of a 3-byte Chinese character
+        chunk1 = full_bytes[:5]
+        chunk2 = full_bytes[5:]
+
+        d1 = decoder.decode(chunk1, final=False)
+        line_buffer += d1
+        while "\n" in line_buffer:
+            idx = line_buffer.find("\n")
+            emitted_lines.append(line_buffer[:idx])
+            line_buffer = line_buffer[idx + 1:]
+
+        d2 = decoder.decode(chunk2, final=True)
+        line_buffer += d2
+        while "\n" in line_buffer:
+            idx = line_buffer.find("\n")
+            emitted_lines.append(line_buffer[:idx])
+            line_buffer = line_buffer[idx + 1:]
+
+        self.assertEqual(len(emitted_lines), 2)
+        self.assertEqual(emitted_lines[0], "歌回直播 -菫時-")
+        self.assertEqual(emitted_lines[1], "第二行 45%")
 
     def test_progress_parsing(self):
         """Verify regex progress parser correctly parses various outputs."""

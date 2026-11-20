@@ -135,6 +135,9 @@ def main():
     ap.add_argument("--cut-video", action="store_true")
     ap.add_argument("--on-threshold", type=float, default=None)
     ap.add_argument("--off-threshold", type=float, default=None)
+    ap.add_argument("--merge-gap-s", type=float, default=None, help="maximum gap in seconds between singing segments to merge")
+    ap.add_argument("--min-song-s", type=float, default=None, help="minimum song duration in seconds")
+    ap.add_argument("--pad-s", type=float, default=None, help="lead-in and lead-out padding in seconds for cut clips")
     ap.add_argument("--page", type=int, default=None, help="part number for bilibili multi-part VODs")
     ap.add_argument("--cookie", default=None, help='bilibili "SESSDATA=..." for higher video quality')
     args = ap.parse_args()
@@ -185,6 +188,13 @@ def main():
         pcfg.on_threshold = args.on_threshold
     if args.off_threshold is not None:
         pcfg.off_threshold = args.off_threshold
+    if args.merge_gap_s is not None:
+        pcfg.merge_gap_s = args.merge_gap_s
+    if args.min_song_s is not None:
+        pcfg.min_song_s = args.min_song_s
+    if args.pad_s is not None:
+        pcfg.pad_before_s = args.pad_s
+        pcfg.pad_after_s = args.pad_s
     segments = probs_to_segments(probs, pcfg, total_duration_s=dur_s)
 
     # 輔助數據檔 (.probs.npy, .segments.json) 統一存放於 out_dir (例如 auto-slicer/out)

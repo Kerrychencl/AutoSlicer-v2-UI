@@ -62,7 +62,13 @@ from ..models import TaskItem, TaskStatus, VodItem, VodStatus
 from ..page_registry import register_page
 from ..queue_manager import QueueManager, get_queue_manager
 from ..runner import CommandBuilder
-from ..scanner import VodScanner, load_metadata_cache, mark_clips_synced
+from ..scanner import (
+    VodScanner,
+    extract_streamer_from_text,
+    load_metadata_cache,
+    mark_clips_synced,
+    resolve_streamer_name,
+)
 from ..widgets.collapsible import CollapsibleBox
 from ..widgets.drop_zone import DropZone
 from .base_page import BasePage
@@ -157,7 +163,7 @@ class DashboardPage(BasePage):
         # Rescan Button
         self.btn_rescan = QPushButton("🔄 重新掃描")
         self.btn_rescan.setCursor(Qt.PointingHandCursor)
-        self.btn_rescan.setObjectName("btnPrimary")
+        self.btn_rescan.setObjectName("primaryButton")
         self.btn_rescan.setToolTip("掃描所有已啟用的監控錄播資料夾")
         self.btn_rescan.clicked.connect(self.trigger_rescan)
         toolbar.addWidget(self.btn_rescan)
@@ -498,10 +504,16 @@ class DashboardPage(BasePage):
         # Check if task was related to VOD processing
         meta = task.metadata
         if meta and meta.get("rescan_dashboard"):
-            # If metadata task completed, mark affected clips in cache
+            # If metadata task completed, mark affected clips in cache (excluding any XML files)
             if meta.get("action") == "metadata" and task.status == TaskStatus.COMPLETED:
-                targets = meta.get("targets", [])
-                mark_clips_synced(targets)
+                clip_files = meta.get("clip_files")
+                if clip_files:
+                    actual_clips = [c for c in clip_files if not str(c).lower().endswith(".xml")]
+                    mark_clips_synced(actual_clips)
+                else:
+                    targets = meta.get("targets", [])
+                    actual_clips = [t for t in targets if not str(t).lower().endswith(".xml")]
+                    mark_clips_synced(actual_clips)
             self.trigger_rescan()
 
     # --- Filtering & Table Rendering ---
@@ -718,7 +730,8 @@ class DashboardPage(BasePage):
         """Route to appropriate action based on current state machine status."""
         status = vod.status
         if status == VodStatus.WAITING_LLC:
-            self.action_generate_llc(vod, cut_video=False)
+            want_cut = (self.combo_mode.currentData() == "cut")
+            self.action_generate_llc(vod, cut_video=want_cut)
         elif status == VodStatus.LLC_GENERATED:
             self.action_open_losslesscut(vod)
         elif status == VodStatus.HAS_CLIPS_NEED_METADATA:
@@ -780,6 +793,16 @@ class DashboardPage(BasePage):
         out_dir = PROJECT_ROOT / "out"
         clip_out_dir = vod.parent_dir
 
+        import inspect
+        sig = inspect.signature(CommandBuilder.build_infer_command)
+        kwargs = {}
+        if "merge_gap_s" in sig.parameters:
+            kwargs["merge_gap_s"] = float(self.spin_merge_gap.value())
+        if "min_song_s" in sig.parameters:
+            kwargs["min_song_s"] = float(self.spin_min_song.value())
+        if "pad_s" in sig.parameters:
+            kwargs["pad_s"] = float(self.spin_pad.value())
+
         cmd = CommandBuilder.build_infer_command(
             repo_root=PROJECT_ROOT,
             input_path=vod.file_path,
@@ -789,7 +812,14 @@ class DashboardPage(BasePage):
             cut_video=cut_video,
             on_threshold=self.spin_on.value(),
             off_threshold=self.spin_off.value(),
+            **kwargs,
         )
+        if "merge_gap_s" not in sig.parameters:
+            cmd.extend([
+                "--merge-gap-s", str(self.spin_merge_gap.value()),
+                "--min-song-s", str(self.spin_min_song.value()),
+                "--pad-s", str(self.spin_pad.value()),
+            ])
 
         title = f"{'無損切歌' if cut_video else '生成打軸 .llc'}: {vod.filename}"
         task = TaskItem(
@@ -852,6 +882,7 @@ class DashboardPage(BasePage):
                 "rescan_dashboard": True,
                 "action": "metadata",
                 "targets": [str(t) for t in targets],
+                "clip_files": [str(c) for c in vod.clip_files],
             },
         )
         self.enqueue_task(task)
@@ -916,6 +947,10 @@ class DashboardPage(BasePage):
 
     # --- Drag & Drop Handler ---
 
+    def handle_dropped_files(self, paths: list[str]) -> None:
+        """Entry point for dropped files routed from MainWindow or DropZone."""
+        self._on_files_dropped(paths)
+
     def _on_files_dropped(self, paths: list[str]) -> None:
         """Handle files dropped into the compact drop zone."""
         if not paths:
@@ -959,19 +994,50 @@ class DashboardPage(BasePage):
                 if f.suffix.lower() in [".mp4", ".flv", ".mkv", ".ts", ".m4a"]
             ]
             if media_files:
+                want_cut = (self.combo_mode.currentData() == "cut")
                 for mf in media_files:
-                    checkpoint = self.config.get_model_path_for_streamer("") or (PROJECT_ROOT / "best.pt")
+                    # Extract streamer from filename or parent folder
+                    streamer = extract_streamer_from_text(mf.stem)
+                    if not streamer or streamer == mf.stem:
+                        streamer = resolve_streamer_name(mf.parent.name)
+
+                    checkpoint = (
+                        self.config.get_model_path_for_streamer(streamer)
+                        or (PROJECT_ROOT / "best.pt")
+                    )
+
+                    import inspect
+                    sig = inspect.signature(CommandBuilder.build_infer_command)
+                    kwargs = {}
+                    if "merge_gap_s" in sig.parameters:
+                        kwargs["merge_gap_s"] = float(self.spin_merge_gap.value())
+                    if "min_song_s" in sig.parameters:
+                        kwargs["min_song_s"] = float(self.spin_min_song.value())
+                    if "pad_s" in sig.parameters:
+                        kwargs["pad_s"] = float(self.spin_pad.value())
+
                     cmd = CommandBuilder.build_infer_command(
                         repo_root=PROJECT_ROOT,
                         input_path=mf,
                         checkpoint=checkpoint,
                         clip_out_dir=mf.parent,
-                        cut_video=False,
+                        cut_video=want_cut,
+                        on_threshold=self.spin_on.value(),
+                        off_threshold=self.spin_off.value(),
+                        **kwargs,
                     )
+                    if "merge_gap_s" not in sig.parameters:
+                        cmd.extend([
+                            "--merge-gap-s", str(self.spin_merge_gap.value()),
+                            "--min-song-s", str(self.spin_min_song.value()),
+                            "--pad-s", str(self.spin_pad.value()),
+                        ])
+
+                    title = f"{'拖曳無損切歌' if want_cut else '拖曳分析打軸'}: {mf.name}"
                     task = TaskItem(
-                        title=f"拖曳分析打軸: {mf.name}",
+                        title=title,
                         command=cmd,
                         cwd=str(PROJECT_ROOT),
-                        metadata={"rescan_dashboard": True},
+                        metadata={"rescan_dashboard": True, "action": "infer"},
                     )
                     self.enqueue_task(task)

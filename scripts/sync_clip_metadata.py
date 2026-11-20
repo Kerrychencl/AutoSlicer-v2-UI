@@ -68,23 +68,29 @@ def parse_recorder_xml(xml_path: Path) -> dict:
     return {}
 
 
-def strip_losslesscut_suffix(stem: str) -> str:
+RE_QC_TAGS = re.compile(r"\[(?:[✅🟡🔴]|得分|分|\d+分)[^\]]*\]\s*", re.UNICODE)
+
+
+def strip_losslesscut_suffix(stem: str, strip_qc_tags: bool = True) -> str:
     """Strip LosslessCut timecode/index/label suffixes to recover original recording stem."""
+    s = stem
+    if strip_qc_tags:
+        s = RE_QC_TAGS.sub("", s).strip(" -_")
     # Pattern 1: -00.38.41.493-00.41.49.763-label or -00.38.41.493-00.41.49.763
-    s = re.sub(r'(-\d{2}\.\d{2}\.\d{2}\.\d{3}-\d{2}\.\d{2}\.\d{2}\.\d{3}(?:-.*)?)$', '', stem)
-    if s != stem:
-        return s
+    p1 = re.sub(r'(-\d{2}\.\d{2}\.\d{2}\.\d{3}-\d{2}\.\d{2}\.\d{2}\.\d{3}(?:-.*)?)$', '', s)
+    if p1 != s:
+        return p1
     # Pattern 2: _song01, -seg01, _part01
-    s = re.sub(r'(_song\d+|-seg\d+|_\d{3}|-\d{3})(?:-.*)?$', '', stem, flags=re.IGNORECASE)
-    if s != stem:
-        return s
+    p2 = re.sub(r'(_song\d+|-seg\d+|_\d{3}|-\d{3})(?:-.*)?$', '', s, flags=re.IGNORECASE)
+    if p2 != s:
+        return p2
     # Pattern 3: -1, -2, -1-songname
-    s = re.sub(r'(-\d{1,4}(?:-.*)?)$', '', stem)
-    if s != stem:
-        return s
+    p3 = re.sub(r'(-\d{1,4}(?:-.*)?)$', '', s)
+    if p3 != s:
+        return p3
     # Pattern 4: _cut_...
-    s = re.sub(r'(_cut_\d+.*)$', '', stem)
-    return s
+    p4 = re.sub(r'(_cut_\d+.*)$', '', s)
+    return p4
 
 def extract_timestamp_fingerprint(text: str) -> str | None:
     """Extract recording timestamp fingerprint (e.g. 2026年10月10日082510 or 2026-10-10)"""
@@ -176,8 +182,28 @@ def find_source_metadata(clip_path: Path, known_ref: Path | None = None) -> tupl
 
     return artist, comment, date_str, target_dt
 
-def apply_metadata_to_file(clip_path: Path, artist: str, comment: str, date_str: str, target_dt: datetime | None):
-    """Write tags via ffmpeg stream copy and update Windows CreationTime."""
+def apply_metadata_to_file(
+    clip_path: Path,
+    artist: str,
+    comment: str,
+    date_str: str,
+    target_dt: datetime | None,
+    sync_creation_time: bool = True,
+    strip_qc_tags: bool = True,
+) -> Path:
+    """Write tags via ffmpeg stream copy, optionally strip QC tags, and update Windows CreationTime."""
+    if strip_qc_tags:
+        clean_stem = RE_QC_TAGS.sub("", clip_path.stem).strip(" -_")
+        if clean_stem and clean_stem != clip_path.stem:
+            new_path = clip_path.with_name(f"{clean_stem}{clip_path.suffix}")
+            if not new_path.exists():
+                try:
+                    clip_path.rename(new_path)
+                    print(f"  [✓] 檔名已清除品管標籤: {clip_path.name} -> {new_path.name}")
+                    clip_path = new_path
+                except Exception as e:
+                    print(f"  [!] 檔名清除品管標籤失敗: {e}")
+
     clip_tags = get_media_metadata(clip_path)
     cur_artist = clip_tags.get("artist", "").strip()
     cur_comment = clip_tags.get("comment", "").strip()
@@ -214,13 +240,22 @@ def apply_metadata_to_file(clip_path: Path, artist: str, comment: str, date_str:
     else:
         print("  [i] MP4 元數據標籤已是最新，無需重寫")
 
-    if target_dt:
+    if target_dt and sync_creation_time:
         set_file_times_windows(clip_path, target_dt)
         print(f"  [✓] Windows 建立日期與修改時間已同步為: {date_str}")
+    elif not sync_creation_time:
+        print("  [i] 已指定 --no-creation-time，略過 Windows 建立時間同步")
     else:
         print("  [!] 未能取得確切錄播時分秒，保留現有檔案時間戳")
+    return clip_path
 
-def process_single_clip(clip_path: Path, known_ref: Path | None = None) -> Path | None:
+
+def process_single_clip(
+    clip_path: Path,
+    known_ref: Path | None = None,
+    sync_creation_time: bool = True,
+    strip_qc_tags: bool = True,
+) -> Path | None:
     print(f"\n[*] 正在處理切片: {clip_path.name}")
     artist, comment, date_str, target_dt = find_source_metadata(clip_path, known_ref)
 
@@ -235,6 +270,8 @@ def process_single_clip(clip_path: Path, known_ref: Path | None = None) -> Path 
                 if m_path.exists():
                     known_ref = m_path
                     artist, comment, date_str, target_dt = find_source_metadata(clip_path, known_ref)
+        except (EOFError, KeyboardInterrupt):
+            print("  [i] 非交互模式 (Non-interactive) 或輸入結束，跳過手動參考檔輸入。")
         except Exception:
             pass
 
@@ -242,7 +279,15 @@ def process_single_clip(clip_path: Path, known_ref: Path | None = None) -> Path 
     print(f"  [>] 年份/時間 (Date) : {date_str or '(未指定)'}")
     print(f"  [>] 註解長度        : {len(comment)} 字元")
 
-    apply_metadata_to_file(clip_path, artist, comment, date_str, target_dt)
+    apply_metadata_to_file(
+        clip_path,
+        artist,
+        comment,
+        date_str,
+        target_dt,
+        sync_creation_time=sync_creation_time,
+        strip_qc_tags=strip_qc_tags,
+    )
     return known_ref
 
 import shlex
@@ -272,12 +317,23 @@ def main():
     print("=" * 60)
 
     raw_args = []
+    sync_creation_time = True
+    strip_qc_tags = True
+
     if len(sys.argv) > 1:
-        raw_args = [Path(a.strip(" `\"'")) for a in sys.argv[1:] if a.strip(" `\"'")]
+        for a in sys.argv[1:]:
+            clean_a = a.strip(" `'\"")
+            if clean_a == "--no-creation-time":
+                sync_creation_time = False
+            elif clean_a == "--keep-qc-tags":
+                strip_qc_tags = False
+            elif clean_a:
+                raw_args.append(Path(clean_a))
     else:
         print("使用說明：")
         print("  1. 可直接將多個 LosslessCut 切片影片或切片資料夾拖曳至 sync_metadata.bat")
         print("  2. 若檔案已重命名，可將「原錄播影片」與「切片影片」同時選取並拖入")
+        print("  3. 支援參數: --no-creation-time, --keep-qc-tags")
         print("")
         try:
             val = input("請輸入切片檔案、資料夾路徑，或直接拖曳檔案至此：\n> ").strip(" `\"'")
@@ -307,7 +363,7 @@ def main():
                 ref_files.append(item)
             elif ext in [".mp4", ".flv", ".mkv"]:
                 stem = item.stem
-                if (item.stat().st_size > 400 * 1024 * 1024) and (strip_losslesscut_suffix(stem) == stem):
+                if (item.stat().st_size > 400 * 1024 * 1024) and (strip_losslesscut_suffix(stem, strip_qc_tags=strip_qc_tags) == stem):
                     ref_files.append(item)
                 else:
                     clip_files.append(item)
@@ -333,7 +389,12 @@ def main():
     print(f"共計待處理 {len(clip_files)} 個切片檔案...")
 
     for f in clip_files:
-        process_single_clip(f, known_ref=explicit_ref)
+        process_single_clip(
+            f,
+            known_ref=explicit_ref,
+            sync_creation_time=sync_creation_time,
+            strip_qc_tags=strip_qc_tags,
+        )
 
     print("\n" + "=" * 60)
     print("🎉 所有切片檔案元數據與 Windows 時間戳同步完畢！")

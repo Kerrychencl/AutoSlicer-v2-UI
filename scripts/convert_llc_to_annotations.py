@@ -117,7 +117,7 @@ def find_companion_llc(media_path: Path) -> Path | None:
         
     return None
 
-def convert_llc(llc_path: str | Path, out_dir: Path | None = None) -> int:
+def convert_llc(llc_path: str | Path, out_dir: Path | None = None, streamer_override: str | None = None) -> int:
     llc_path = Path(llc_path)
     try:
         data = parse_llc(llc_path)
@@ -134,7 +134,9 @@ def convert_llc(llc_path: str | Path, out_dir: Path | None = None) -> int:
         print(f"  [!] 專案檔「{llc_path.name}」中未包含有效剪輯片段 (cutSegments 為空)！")
         return 0
     
-    streamer = extract_streamer_name(llc_path, media_name)
+    streamer = streamer_override or extract_streamer_name(llc_path, media_name)
+    if streamer in CANONICAL_STREAMERS:
+        streamer = CANONICAL_STREAMERS[streamer]
     
     if out_dir is None:
         out_dir = ROOT / "data" / "annotations" / streamer
@@ -196,7 +198,7 @@ def convert_llc(llc_path: str | Path, out_dir: Path | None = None) -> int:
     print(f"  - 訓練清單:     {tsv_gold_path}")
     return 1
 
-def process_target(target: str | Path) -> int:
+def process_target(target: str | Path, streamer_override: str | None = None) -> int:
     target_path = Path(target)
     if not target_path.exists():
         print(f"[!] 錯誤：找不到指定路徑: {target_path}")
@@ -212,20 +214,20 @@ def process_target(target: str | Path) -> int:
         print(f"[*] 在目錄中找到 {len(llc_files)} 個 .llc 專案檔，開始批次轉換...")
         success = 0
         for f in llc_files:
-            success += convert_llc(f)
+            success += convert_llc(f, streamer_override=streamer_override)
         return success
         
     elif target_path.is_file():
         suffix = target_path.suffix.lower()
         if suffix == ".llc":
-            return convert_llc(target_path)
+            return convert_llc(target_path, streamer_override=streamer_override)
             
         elif suffix in MEDIA_EXTENSIONS:
             companion = find_companion_llc(target_path)
             if companion and companion.is_file():
                 print(f"\n[★] 偵測到傳入影片檔案: {target_path.name}")
                 print(f"    自動尋獲同目錄之打軸專案: {companion.name}")
-                return convert_llc(companion)
+                return convert_llc(companion, streamer_override=streamer_override)
             else:
                 print(f"\n========================================================")
                 print(f"[!] 提示：您傳入的是多媒體影片/音訊檔案：")
@@ -234,7 +236,7 @@ def process_target(target: str | Path) -> int:
                 print(f"--------------------------------------------------------")
                 print(f"💡 常見使用情境引導：")
                 print(f"  1. 若您是要【讓 AI 聽歌自動生成打軸時間軸 (.llc)】：")
-                print(f"     👉 請改將影片拖曳到「generate_llc.bat」！")
+                print(f"     👉 請改將影片拖曳到「generatellc.bat」！")
                 print(f"  2. 若您是要【匯入已在 LosslessCut 標註好的時間軸】：")
                 print(f"     👉 請在 LosslessCut 內點擊「File」->「Save Project」存成 .llc 專案檔，")
                 print(f"        再將該 .llc 專案檔拖曳至此工具。")
@@ -248,7 +250,21 @@ def process_target(target: str | Path) -> int:
 
 if __name__ == "__main__":
     import sys
-    targets = sys.argv[1:]
+    targets = []
+    streamer_override = None
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg == "--streamer" and i + 1 < len(sys.argv):
+            streamer_override = sys.argv[i + 1]
+            i += 2
+        elif arg.startswith("--streamer="):
+            streamer_override = arg.split("=", 1)[1]
+            i += 1
+        else:
+            targets.append(arg)
+            i += 1
+
     if not targets:
         default_p = r"e:\Bilibili livestream\Bilibili live downloder\638257-秋葵AKIAOI\秋葵-2026年08月【compressed】\【秋葵AKIAOI】2026年08月16日163044 【歌杂】稍微唱会儿【老鼠干活动持续中】 cmp-proj.llc"
         if Path(default_p).exists():
@@ -257,7 +273,7 @@ if __name__ == "__main__":
             print("未指定任何目標檔案或目錄。")
             sys.exit(0)
             
-    total_processed = sum(process_target(t) for t in targets)
+    total_processed = sum(process_target(t, streamer_override=streamer_override) for t in targets)
     print("\n========================================================")
     if total_processed > 0:
         print(f"處理完成！共成功轉換 {total_processed} 個專案檔案。")

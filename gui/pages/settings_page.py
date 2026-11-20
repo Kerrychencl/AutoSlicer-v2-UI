@@ -617,14 +617,16 @@ class SettingsPage(BasePage):
     def _on_model_combo_changed(self) -> None:
         # Re-check status indicators
         for row in range(self.model_table.rowCount()):
-            streamer_item = self.model_table.item(row, 0)
-            if not streamer_item:
-                continue
-            streamer = "-菫時-" if row == 0 else ("秋葵" if row == 1 else ("薇Steria" if row == 2 else ("随一Suiii" if row == 3 else ("_default" if row == 4 else streamer_item.text()))))
             combo = self.model_table.cellWidget(row, 1)
             if isinstance(combo, QComboBox):
+                streamer = combo.property("streamer")
+                if not streamer:
+                    streamer_item = self.model_table.item(row, 0)
+                    streamer = streamer_item.text() if streamer_item else ""
                 selected_data = combo.currentData()
                 status_item = self.model_table.item(row, 2)
+                if not status_item:
+                    continue
                 if selected_data and Path(selected_data).is_file():
                     status_item.setText("✓ 存在 (指定)")
                     status_item.setForeground(Qt.darkGreen)
@@ -686,7 +688,11 @@ class SettingsPage(BasePage):
 
         # 2. Paths
         paths = self.config.get("paths", {})
-        paths["losslesscut_exe"] = self.llc_exe_edit.text().strip()
+        llc_val = self.llc_exe_edit.text().strip()
+        if hasattr(self.config, "set_losslesscut_exe"):
+            self.config.set_losslesscut_exe(llc_val, auto_save=False)
+        else:
+            paths["losslesscut_exe"] = llc_val
         paths["runs_dir"] = self.runs_dir_edit.text().strip() or "runs"
         paths["annotations_dir"] = self.ann_dir_edit.text().strip() or "data/annotations"
         paths["default_download_root"] = self.down_root_edit.text().strip()

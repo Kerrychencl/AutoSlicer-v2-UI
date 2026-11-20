@@ -95,6 +95,55 @@ class TestQueueManager(unittest.TestCase):
         self.assertEqual(long_task.status, TaskStatus.CANCELLED)
         self.assertTrue(self.qm.is_paused)
 
+    def test_failed_to_start_deadlock_prevention(self):
+        """Verify task with invalid non-existent executable emits FailedToStart, marks FAILED, and queue advances."""
+        t_bad = TaskItem(
+            title="Non-existent executable",
+            command=["this_program_does_not_exist_xyz_123.exe", "--arg"],
+        )
+        t_good = TaskItem(
+            title="Normal follow-up",
+            command=[sys.executable, "-c", "import sys; print('Good OK'); sys.exit(0)"],
+        )
+
+        failed_tasks = []
+        completed_tasks = []
+        self.qm.task_failed.connect(lambda t, err: failed_tasks.append(t.id))
+        self.qm.task_completed.connect(lambda t: completed_tasks.append(t.id))
+
+        self.qm.add_tasks([t_bad, t_good])
+
+        # Wait until both tasks are processed
+        success = self._wait_for(lambda: len(self.qm.finished_tasks()) == 2, timeout_s=8.0)
+        self.assertTrue(success, "Queue deadlocked or timed out on FailedToStart")
+
+        self.assertEqual(t_bad.status, TaskStatus.FAILED)
+        self.assertEqual(t_good.status, TaskStatus.COMPLETED)
+        self.assertIn(t_bad.id, failed_tasks)
+        self.assertIn(t_good.id, completed_tasks)
+
+    def test_queue_pause_resume_and_auto_unpause(self):
+        """Verify pause/resume behavior and auto-unpause on new task when queue is idle."""
+        self.qm.pause_queue()
+        self.assertTrue(self.qm.is_paused)
+
+        t_queued = TaskItem(
+            title="Queued while paused",
+            command=[sys.executable, "-c", "import sys; sys.exit(0)"],
+        )
+        # Adding task to idle queue automatically unpauses as per Section 6 / P0.5 fix
+        self.qm.add_task(t_queued)
+        self.assertFalse(self.qm.is_paused)
+
+        success = self._wait_for(lambda: t_queued.status == TaskStatus.COMPLETED, timeout_s=5.0)
+        self.assertTrue(success)
+
+        # Explicit pause during execution
+        self.qm.pause_queue()
+        self.assertTrue(self.qm.is_paused)
+        self.qm.resume_queue()
+        self.assertFalse(self.qm.is_paused)
+
 
 if __name__ == "__main__":
     unittest.main()

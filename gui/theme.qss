@@ -41,7 +41,7 @@ QLabel#sidebarSubtitle {
     padding: 0px 16px 14px 16px;
 }
 
-QPushButton.nav-btn {
+QPushButton.nav-btn, QPushButton[class="nav-btn"], QPushButton#navBtn {
     background-color: transparent;
     color: #9ca3af;
     border: none;
@@ -53,25 +53,26 @@ QPushButton.nav-btn {
     font-weight: 500;
 }
 
-QPushButton.nav-btn:hover {
+QPushButton.nav-btn:hover, QPushButton[class="nav-btn"]:hover {
     background-color: #1c2027;
     color: #f3f4f6;
 }
 
-QPushButton.nav-btn:checked, QPushButton.nav-btn[active="true"] {
+QPushButton.nav-btn:checked, QPushButton[class="nav-btn"]:checked,
+QPushButton.nav-btn[active="true"], QPushButton[class="nav-btn"][active="true"] {
     background-color: #21252b;
     color: #3b82f6;
     border-left: 3px solid #3b82f6;
     font-weight: 600;
 }
 
-QPushButton.nav-btn:disabled {
+QPushButton.nav-btn:disabled, QPushButton[class="nav-btn"]:disabled {
     color: #4b5563;
     background-color: transparent;
 }
 
 /* === Cards & Panels === */
-QFrame.Card, QFrame#card {
+QFrame.Card, QFrame[class="card"], QFrame#card, QFrame#cardFrame {
     background-color: #21252b;
     border: 1px solid #333842;
     border-radius: 6px;
@@ -126,68 +127,68 @@ QPushButton:disabled {
 }
 
 /* Primary Button */
-QPushButton.primary, QPushButton#primaryButton {
+QPushButton.primary, QPushButton[class="primary"], QPushButton#primaryButton, QPushButton#btnPrimary {
     background-color: #2563eb;
     color: #ffffff;
     border: 1px solid #1d4ed8;
     font-weight: 500;
 }
 
-QPushButton.primary:hover, QPushButton#primaryButton:hover {
+QPushButton.primary:hover, QPushButton[class="primary"]:hover, QPushButton#primaryButton:hover, QPushButton#btnPrimary:hover {
     background-color: #3b82f6;
     border-color: #2563eb;
     color: #ffffff;
 }
 
-QPushButton.primary:pressed, QPushButton#primaryButton:pressed {
+QPushButton.primary:pressed, QPushButton[class="primary"]:pressed, QPushButton#primaryButton:pressed, QPushButton#btnPrimary:pressed {
     background-color: #1d4ed8;
     border-color: #1e40af;
 }
 
-QPushButton.primary:disabled, QPushButton#primaryButton:disabled {
+QPushButton.primary:disabled, QPushButton[class="primary"]:disabled, QPushButton#primaryButton:disabled, QPushButton#btnPrimary:disabled {
     background-color: #1e3a5f;
     border-color: #1e3a5f;
     color: #64748b;
 }
 
 /* Danger Button */
-QPushButton.danger, QPushButton#dangerButton {
+QPushButton.danger, QPushButton[class="danger"], QPushButton#dangerButton, QPushButton#btnDanger {
     background-color: #991b1b;
     color: #fee2e2;
     border: 1px solid #b91c1c;
     font-weight: 500;
 }
 
-QPushButton.danger:hover, QPushButton#dangerButton:hover {
+QPushButton.danger:hover, QPushButton[class="danger"]:hover, QPushButton#dangerButton:hover, QPushButton#btnDanger:hover {
     background-color: #dc2626;
     border-color: #ef4444;
     color: #ffffff;
 }
 
-QPushButton.danger:pressed, QPushButton#dangerButton:pressed {
+QPushButton.danger:pressed, QPushButton[class="danger"]:pressed, QPushButton#dangerButton:pressed, QPushButton#btnDanger:pressed {
     background-color: #7f1d1d;
 }
 
-QPushButton.danger:disabled, QPushButton#dangerButton:disabled {
+QPushButton.danger:disabled, QPushButton[class="danger"]:disabled, QPushButton#dangerButton:disabled, QPushButton#btnDanger:disabled {
     background-color: #3f1a1a;
     border-color: #3f1a1a;
     color: #7f3939;
 }
 
 /* Secondary / Subtle Button */
-QPushButton.secondary {
+QPushButton.secondary, QPushButton[class="secondary"], QPushButton#secondaryButton {
     background-color: #1e2228;
     border: 1px solid #333842;
     color: #9ca3af;
 }
 
-QPushButton.secondary:hover {
+QPushButton.secondary:hover, QPushButton[class="secondary"]:hover, QPushButton#secondaryButton:hover {
     background-color: #282c34;
     color: #f3f4f6;
 }
 
 /* Compact Button */
-QPushButton.compact {
+QPushButton.compact, QPushButton[class="compact"] {
     padding: 3px 8px;
     font-size: 12px;
     min-height: 16px;
@@ -571,7 +572,7 @@ QPlainTextEdit#logConsole {
 }
 
 /* === Status Badges === */
-QLabel.Badge {
+QLabel.Badge, QLabel[class="badge"] {
     border-radius: 3px;
     padding: 2px 7px;
     font-size: 11px;
@@ -579,43 +580,67 @@ QLabel.Badge {
 }
 
 /* 1. 待打軸 (灰藍) */
-QLabel.BadgePending, QLabel#badgePending {
+QLabel.BadgePending, QLabel[class="badge-pending"], QLabel#badgePending {
     background-color: #1e293b;
     color: #94a3b8;
     border: 1px solid #334155;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 600;
 }
 
 /* 2. 已生 .llc / 待剪輯 (琥珀黃) */
-QLabel.BadgeAmber, QLabel#badgeAmber {
+QLabel.BadgeAmber, QLabel[class="badge-amber"], QLabel#badgeAmber {
     background-color: #451a03;
     color: #f59e0b;
     border: 1px solid #78350f;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 600;
 }
 
 /* 3. 有切片 / 待修 Metadata (橘紅) */
-QLabel.BadgeOrange, QLabel#badgeOrange {
+QLabel.BadgeOrange, QLabel[class="badge-orange"], QLabel#badgeOrange {
     background-color: #431407;
     color: #fb923c;
     border: 1px solid #7c2d12;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 600;
 }
 
 /* 4. 待匯入標註 (藍紫) */
-QLabel.BadgePurple, QLabel#badgePurple {
+QLabel.BadgePurple, QLabel[class="badge-purple"], QLabel#badgePurple {
     background-color: #2e1065;
     color: #c084fc;
     border: 1px solid #581c87;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 600;
 }
 
 /* 5. 已完成 (翠綠) */
-QLabel.BadgeGreen, QLabel#badgeGreen {
+QLabel.BadgeGreen, QLabel[class="badge-green"], QLabel#badgeGreen {
     background-color: #052e16;
     color: #4ade80;
     border: 1px solid #14532d;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 600;
 }
 
 /* 額外輔助徽章 */
-QLabel.BadgeRed, QLabel#badgeRed {
+QLabel.BadgeRed, QLabel[class="badge-red"], QLabel#badgeRed {
     background-color: #450a0a;
     color: #f87171;
     border: 1px solid #7f1d1d;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 600;
 }

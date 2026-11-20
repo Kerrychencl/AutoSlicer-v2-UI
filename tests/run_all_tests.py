@@ -25,6 +25,7 @@ import tests.test_runner as t_runner
 import tests.test_queue_manager as t_queue
 import tests.test_dashboard_page as t_dash
 import tests.test_ui_smoke as t_smoke
+import tests.test_cli_scripts as t_cli
 
 
 def build_suite() -> unittest.TestSuite:
@@ -37,6 +38,7 @@ def build_suite() -> unittest.TestSuite:
     suite.addTests(loader.loadTestsFromModule(t_queue))
     suite.addTests(loader.loadTestsFromModule(t_dash))
     suite.addTests(loader.loadTestsFromModule(t_smoke))
+    suite.addTests(loader.loadTestsFromModule(t_cli))
 
     return suite
 
